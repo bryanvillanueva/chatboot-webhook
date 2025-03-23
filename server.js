@@ -38,37 +38,6 @@ db.getConnection((err, connection) => {
 });
 
 
-// Crear una conexión a la segunda base de datos (GoDaddy)
-const authDB = mysql.createPool({
-  host: '192.169.145.218',      // Reemplaza con la dirección de tu servidor GoDaddy
-  user: 'plataforma',                    // Reemplaza con tu usuario
-  password: 'NR22gBzwXtkje4a',             // Reemplaza con tu contraseña 
-  database: 'ecaf_plataforma', // Reemplaza con el nombre de tu base de datos
-  waitForConnections: true,
-  connectionLimit: 5,                    // Menor límite de conexiones para autenticación
-  queueLimit: 0,
-  charset: 'utf8mb4'
-});
-
-// Verifica la conexión a la base de datos de autenticación
-authDB.getConnection((err, connection) => {
-  if (err) {
-    console.error('❌ Error al conectar a la base de datos de autenticación:', err.message);
-  } else {
-    console.log('✅ Conectado a la base de datos de autenticación en GoDaddy');
-    connection.release(); // Liberar la conexión
-  }
-});
-
-// Configurar Cloudinary con variables de entorno
-cloudinary.config({
-  cloud_name: process.env.CLOUD_NAME,
-  api_key: process.env.API_KEY,
-  api_secret: process.env.API_SECRET
-});
-
-
-
 
 // Configure multer to store the file in memory
 
