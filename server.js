@@ -1068,21 +1068,20 @@ app.post('/appointments', (req, res) => {
 
 // MOODLE // 
 
+// MOODLE - Obtener usuarios con autenticación manual
 app.get('/api/moodle/users', async (req, res) => {
   try {
     const formData = new URLSearchParams();
-    formData.append('wstoken', MOODLE_TOKEN);
+    formData.append('wstoken', MOODLE_TOKEN); // Asegúrate de tener esta constante configurada
     formData.append('wsfunction', 'core_user_get_users');
     formData.append('moodlewsrestformat', 'json');
-    
-    const vocales = ['a', 'e', 'i', 'o', 'u'];
-    vocales.forEach((vocal, index) => {
-      formData.append(`criteria[${index}][key]`, 'username');
-      formData.append(`criteria[${index}][value]`, vocal);
-    });
+    formData.append('criteria[0][key]', 'auth');
+    formData.append('criteria[0][value]', 'manual');
 
     const response = await axios.post(MOODLE_API_URL, formData.toString(), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
     });
 
     res.json(response.data);
@@ -1091,6 +1090,7 @@ app.get('/api/moodle/users', async (req, res) => {
     res.status(500).send('Error al obtener usuarios');
   }
 });
+
 
 app.post('/api/moodle/users', async (req, res) => {
   const { username, password, firstname, lastname, email } = req.body;
