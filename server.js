@@ -1075,7 +1075,7 @@ app.get('/api/moodle/users', async (req, res) => {
     formData.append('wsfunction', 'core_user_get_users');
     formData.append('moodlewsrestformat', 'json');
     formData.append('criteria[0][key]', 'email');
-
+    formData.append('criteria[0][value]', '@');
 
     const response = await axios.post(MOODLE_API_URL, formData.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
