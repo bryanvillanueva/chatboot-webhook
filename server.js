@@ -1177,6 +1177,120 @@ app.post('/api/moodle/enrol', async (req, res) => {
 
 
 
+
+
+
+
+// ESTUDIANTES EN BASE DE DATOS INTERNA //
+
+// GET: Obtener todos los estudiantes
+router.get('/students', async (req, res) => {
+  try {
+    const [students] = await db.query('SELECT * FROM students ORDER BY created_at DESC');
+    res.json(students);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error al obtener estudiantes');
+  }
+});
+
+// GET: Obtener un estudiante por ID
+router.get('/students/:id', async (req, res) => {
+  try {
+    const [student] = await db.query('SELECT * FROM students WHERE id = ?', [req.params.id]);
+    if (student.length === 0) return res.status(404).send('Estudiante no encontrado');
+    res.json(student[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error al obtener estudiante');
+  }
+});
+
+// POST: Crear nuevo estudiante
+router.post('/students', async (req, res) => {
+  try {
+    const {
+      first_name,
+      last_name,
+      identification_type,
+      identification_number,
+      email,
+      phone,
+      gender,
+      birth_date,
+      address,
+      city,
+      department,
+      country
+    } = req.body;
+
+    const [result] = await db.query(
+      `INSERT INTO students (
+        first_name, last_name, identification_type, identification_number,
+        email, phone, gender, birth_date, address, city, department, country
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        first_name, last_name, identification_type, identification_number,
+        email, phone, gender, birth_date, address, city, department, country
+      ]
+    );
+
+    res.status(201).json({ id: result.insertId, message: 'Estudiante creado correctamente' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error al crear estudiante');
+  }
+});
+
+// PUT: Actualizar estudiante
+router.put('/students/:id', async (req, res) => {
+  try {
+    const {
+      first_name,
+      last_name,
+      identification_type,
+      identification_number,
+      email,
+      phone,
+      gender,
+      birth_date,
+      address,
+      city,
+      department,
+      country
+    } = req.body;
+
+    await db.query(
+      `UPDATE students SET
+        first_name = ?, last_name = ?, identification_type = ?, identification_number = ?,
+        email = ?, phone = ?, gender = ?, birth_date = ?, address = ?, city = ?, department = ?, country = ?
+      WHERE id = ?`,
+      [
+        first_name, last_name, identification_type, identification_number,
+        email, phone, gender, birth_date, address, city, department, country,
+        req.params.id
+      ]
+    );
+
+    res.json({ message: 'Estudiante actualizado correctamente' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error al actualizar estudiante');
+  }
+});
+
+// DELETE: Eliminar estudiante
+router.delete('/students/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM students WHERE id = ?', [req.params.id]);
+    res.json({ message: 'Estudiante eliminado correctamente' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error al eliminar estudiante');
+  }
+});
+
+
 // Manejo de SIGTERM para evitar cierre abrupto en Railway
 process.on("SIGTERM", () => {
     console.log("🔻 Señal SIGTERM recibida. Cerrando servidor...");
