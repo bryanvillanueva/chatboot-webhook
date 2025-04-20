@@ -1174,6 +1174,39 @@ app.post('/api/moodle/enrol', async (req, res) => {
   }
 });
 
+// 📌 Crear estudiante en Moodle desde base de datos interna
+app.post('/api/moodle/students/:id/create', async (req, res) => {
+  const studentId = req.params.id;
+
+  try {
+    const [results] = await db.promise().query('SELECT * FROM students WHERE id = ?', [studentId]);
+    if (results.length === 0) return res.status(404).send('Estudiante no encontrado');
+
+    const student = results[0];
+    const username = student.email.split('@')[0]; // Ej: usar email como base de usuario
+    const password = 'Shark' + Math.floor(1000 + Math.random() * 9000); // Contraseña temporal segura
+
+    const formData = new URLSearchParams();
+    formData.append('wstoken', MOODLE_TOKEN);
+    formData.append('wsfunction', 'core_user_create_users');
+    formData.append('moodlewsrestformat', 'json');
+    formData.append('users[0][username]', username);
+    formData.append('users[0][password]', password);
+    formData.append('users[0][firstname]', student.first_name);
+    formData.append('users[0][lastname]', student.last_name || ' ');
+    formData.append('users[0][email]', student.email);
+    formData.append('users[0][auth]', 'manual');
+
+    const response = await axios.post(MOODLE_API_URL, formData.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    res.json({ moodleResponse: response.data, password });
+  } catch (error) {
+    console.error('❌ Error creando estudiante en Moodle:', error.response?.data || error.message);
+    res.status(500).send('Error al crear estudiante en Moodle');
+  }
+});
 
 
 
