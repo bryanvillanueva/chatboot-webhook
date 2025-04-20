@@ -1184,30 +1184,31 @@ app.post('/api/moodle/enrol', async (req, res) => {
 // ESTUDIANTES EN BASE DE DATOS INTERNA //
 
 // GET: Obtener todos los estudiantes
-router.get('/students', async (req, res) => {
+// 📌 GET: Obtener todos los estudiantes
+app.get('/students', async (req, res) => {
   try {
-    const [students] = await db.query('SELECT * FROM students ORDER BY created_at DESC');
+    const [students] = await db.promise().query('SELECT * FROM students ORDER BY created_at DESC');
     res.json(students);
   } catch (err) {
-    console.error(err);
+    console.error('❌ Error al obtener estudiantes:', err.message);
     res.status(500).send('Error al obtener estudiantes');
   }
 });
 
-// GET: Obtener un estudiante por ID
-router.get('/students/:id', async (req, res) => {
+// 📌 GET: Obtener un estudiante por ID
+app.get('/students/:id', async (req, res) => {
   try {
-    const [student] = await db.query('SELECT * FROM students WHERE id = ?', [req.params.id]);
+    const [student] = await db.promise().query('SELECT * FROM students WHERE id = ?', [req.params.id]);
     if (student.length === 0) return res.status(404).send('Estudiante no encontrado');
     res.json(student[0]);
   } catch (err) {
-    console.error(err);
+    console.error('❌ Error al obtener estudiante:', err.message);
     res.status(500).send('Error al obtener estudiante');
   }
 });
 
-// POST: Crear nuevo estudiante
-router.post('/students', async (req, res) => {
+// 📌 POST: Crear nuevo estudiante
+app.post('/students', async (req, res) => {
   try {
     const {
       first_name,
@@ -1224,7 +1225,7 @@ router.post('/students', async (req, res) => {
       country
     } = req.body;
 
-    const [result] = await db.query(
+    const [result] = await db.promise().query(
       `INSERT INTO students (
         first_name, last_name, identification_type, identification_number,
         email, phone, gender, birth_date, address, city, department, country
@@ -1237,13 +1238,13 @@ router.post('/students', async (req, res) => {
 
     res.status(201).json({ id: result.insertId, message: 'Estudiante creado correctamente' });
   } catch (err) {
-    console.error(err);
+    console.error('❌ Error al crear estudiante:', err.message);
     res.status(500).send('Error al crear estudiante');
   }
 });
 
-// PUT: Actualizar estudiante
-router.put('/students/:id', async (req, res) => {
+// 📌 PUT: Actualizar estudiante
+app.put('/students/:id', async (req, res) => {
   try {
     const {
       first_name,
@@ -1260,7 +1261,7 @@ router.put('/students/:id', async (req, res) => {
       country
     } = req.body;
 
-    await db.query(
+    await db.promise().query(
       `UPDATE students SET
         first_name = ?, last_name = ?, identification_type = ?, identification_number = ?,
         email = ?, phone = ?, gender = ?, birth_date = ?, address = ?, city = ?, department = ?, country = ?
@@ -1274,18 +1275,18 @@ router.put('/students/:id', async (req, res) => {
 
     res.json({ message: 'Estudiante actualizado correctamente' });
   } catch (err) {
-    console.error(err);
+    console.error('❌ Error al actualizar estudiante:', err.message);
     res.status(500).send('Error al actualizar estudiante');
   }
 });
 
-// DELETE: Eliminar estudiante
-router.delete('/students/:id', async (req, res) => {
+// 📌 DELETE: Eliminar estudiante
+app.delete('/students/:id', async (req, res) => {
   try {
-    await db.query('DELETE FROM students WHERE id = ?', [req.params.id]);
+    await db.promise().query('DELETE FROM students WHERE id = ?', [req.params.id]);
     res.json({ message: 'Estudiante eliminado correctamente' });
   } catch (err) {
-    console.error(err);
+    console.error('❌ Error al eliminar estudiante:', err.message);
     res.status(500).send('Error al eliminar estudiante');
   }
 });
