@@ -37,7 +37,9 @@ db.getConnection((err, connection) => {
     }
 });
 
-
+// Configuracion de Moodle 
+const MOODLE_API_URL = 'https://websundays.com/moodle/webservice/rest/server.php';
+const MOODLE_TOKEN = 'bf2b30515f7a1da465c1bba60b308689';
 
 // Configure multer to store the file in memory
 
@@ -1062,6 +1064,114 @@ app.post('/appointments', (req, res) => {
         res.status(201).send({ message: '✅ Cita creada con éxito', id: result.insertId });
     });
 });
+
+
+// MOODLE // 
+
+app.get('/api/moodle/users', async (req, res) => {
+  try {
+    const formData = new URLSearchParams();
+    formData.append('wstoken', MOODLE_TOKEN);
+    formData.append('wsfunction', 'core_user_get_users');
+    formData.append('moodlewsrestformat', 'json');
+    formData.append('criteria[0][key]', 'email');
+    formData.append('criteria[0][value]', '@');
+
+    const response = await axios.post(MOODLE_API_URL, formData.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Error obteniendo usuarios de Moodle:', error.message);
+    res.status(500).send('Error al obtener usuarios');
+  }
+});
+
+app.post('/api/moodle/users', async (req, res) => {
+  const { username, password, firstname, lastname, email } = req.body;
+
+  if (!username || !password || !firstname || !lastname || !email) {
+    return res.status(400).send('Faltan campos obligatorios');
+  }
+
+  try {
+    const formData = new URLSearchParams();
+    formData.append('wstoken', MOODLE_TOKEN);
+    formData.append('wsfunction', 'core_user_create_users');
+    formData.append('moodlewsrestformat', 'json');
+    formData.append('users[0][username]', username);
+    formData.append('users[0][password]', password);
+    formData.append('users[0][firstname]', firstname);
+    formData.append('users[0][lastname]', lastname);
+    formData.append('users[0][email]', email);
+    formData.append('users[0][auth]', 'manual');
+
+    const response = await axios.post(MOODLE_API_URL, formData.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Error creando usuario:', error.response?.data || error.message);
+    res.status(500).send('Error al crear usuario');
+  }
+});
+
+app.put('/api/moodle/users/:id', async (req, res) => {
+  const { id } = req.params;
+  const { firstname, lastname, email } = req.body;
+
+  try {
+    const formData = new URLSearchParams();
+    formData.append('wstoken', MOODLE_TOKEN);
+    formData.append('wsfunction', 'core_user_update_users');
+    formData.append('moodlewsrestformat', 'json');
+    formData.append('users[0][id]', id);
+    if (firstname) formData.append('users[0][firstname]', firstname);
+    if (lastname) formData.append('users[0][lastname]', lastname);
+    if (email) formData.append('users[0][email]', email);
+
+    const response = await axios.post(MOODLE_API_URL, formData.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Error actualizando usuario:', error.message);
+    res.status(500).send('Error al actualizar usuario');
+  }
+});
+
+app.post('/api/moodle/enrol', async (req, res) => {
+  const { userId, courseId, roleId = 5 } = req.body; // 5 = student
+
+  if (!userId || !courseId) {
+    return res.status(400).send('Faltan userId o courseId');
+  }
+
+  try {
+    const formData = new URLSearchParams();
+    formData.append('wstoken', MOODLE_TOKEN);
+    formData.append('wsfunction', 'enrol_manual_enrol_users');
+    formData.append('moodlewsrestformat', 'json');
+    formData.append('enrolments[0][roleid]', roleId);
+    formData.append('enrolments[0][userid]', userId);
+    formData.append('enrolments[0][courseid]', courseId);
+
+    const response = await axios.post(MOODLE_API_URL, formData.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    res.json({ message: 'Usuario inscrito correctamente', response: response.data });
+  } catch (error) {
+    console.error('❌ Error inscribiendo usuario:', error.message);
+    res.status(500).send('Error al inscribir usuario');
+  }
+});
+
+
+
 
 // Manejo de SIGTERM para evitar cierre abrupto en Railway
 process.on("SIGTERM", () => {
