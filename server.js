@@ -87,8 +87,7 @@ app.post('/webhook', async (req, res) => {
 
       // Choose target webhook URL based on message type
       const webhookMap = {
-          //'text': 'https://hook.eu2.make.com/ve2tavn6hjsvscq1t3q5y6jc0m47ee68',
-          'text': 'https://hook.eu2.make.com/qjqv5oykr1g4tt6qbyewwn293mu7oxob',
+          'text': 'https://hook.eu2.make.com/ve2tavn6hjsvscq1t3q5y6jc0m47ee68',
           'audio': 'https://hook.eu2.make.com/pch3avcjrya2et6gqol5vdoyh11txfrl',
           'image': 'https://hook.eu2.make.com/smdk4pbh2txc94fdvj73mmpt3ehdxuj3',
           'document': 'https://hook.eu2.make.com/smdk4pbh2txc94fdvj73mmpt3ehdxuj3'
