@@ -16,14 +16,14 @@ app.use(express.json({ extended: true }));
 app.use(express.urlencoded({ extended: true }));
 
 const db = mysql.createPool({
-    host: 'srv1041.hstgr.io',
-    user: 'u255066530_SharkChat',
-    password: 'aTg@K7$vP9Fw&iA#nz22mrhg',
-    database: 'u255066530_ChatBoot',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    charset: 'utf8mb4'
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  charset: 'utf8mb4'
 });
 
 
@@ -38,8 +38,8 @@ db.getConnection((err, connection) => {
 });
 
 // Configuracion de Moodle 
-const MOODLE_API_URL = 'https://websundays.com/moodle/webservice/rest/server.php';
-const MOODLE_TOKEN = 'bf2b30515f7a1da465c1bba60b308689';
+const MOODLE_API_URL = process.env.MOODLE_API_URL;
+const MOODLE_TOKEN = process.env.MOODLE_TOKEN;
 
 // Configure multer to store the file in memory
 
@@ -47,10 +47,10 @@ const storage = multer.memoryStorage();
 
 const upload = multer({ storage }); // Esto es necesario
 
-// Token de verificación
-const PHONE_NUMBER_ID = '559822483873940';
-const VERIFY_TOKEN = 'Mi_Nuevo_Token_Secreto';
-const ACCESS_TOKEN = 'EAAG8R2yWJOwBO9ZBFWH5HQzmsmJxLS8hpX1kt05P42HYr2pdfIINTpJAOCWeoSYlat26qCYZBnAMADObZCZBSOxBPI1Aa55Cmn8GfHfWRPVFIBL7U8O4lAfYyDvINtxPUwiTo7Q6ceUqp8oPW2BMvlC98w2QZCpX1GmGj1X6Wpm6cdjIulA3HsedytsVKcpTB8wZDZD'; // Reemplazar con tu token real
+// Token de verificación whatsapp
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 
 const fs = require('fs');
 
