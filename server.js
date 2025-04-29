@@ -1188,8 +1188,17 @@ app.post('/api/moodle/students/:id/create', async (req, res) => {
     // Sanitizamos el nombre de usuario eliminando caracteres especiales
     const username = student.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '') + studentId;
     
-    // 3. Generar contraseña temporal fuerte
-    const password = 'Shark' + Math.floor(1000 + Math.random() * 9000);
+    // 3. Generar contraseña según el patrón: primer nombre + número de identificación + *
+    // Sanitizamos el nombre para usarlo como parte de la contraseña (quitamos espacios y acentos)
+    const sanitizedFirstName = student.first_name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // Eliminar acentos
+      .replace(/\s+/g, "")             // Eliminar espacios
+      .replace(/[^a-zA-Z0-9]/g, "");   // Mantener solo alfanuméricos
+    
+    // Aseguramos que haya al menos un carácter del nombre y agregamos la identificación + *
+    const password = (sanitizedFirstName.charAt(0).toUpperCase() + sanitizedFirstName.substring(1).toLowerCase() || "User") + 
+                    student.identification_number + "*";
     
     // 4. Construir los datos para la API de Moodle
     const formData = new URLSearchParams();
