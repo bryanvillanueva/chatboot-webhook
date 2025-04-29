@@ -1178,13 +1178,20 @@ app.post('/api/moodle/students/:id/create', async (req, res) => {
   const studentId = req.params.id;
 
   try {
+    // 1. Obtener los datos del estudiante de nuestra base de datos
     const [results] = await db.promise().query('SELECT * FROM students WHERE id = ?', [studentId]);
     if (results.length === 0) return res.status(404).send('Estudiante no encontrado');
 
     const student = results[0];
-    const username = student.email.split('@')[0]; // Ej: usar email como base de usuario
-    const password = 'Shark' + Math.floor(1000 + Math.random() * 9000); // Contraseña temporal segura
-
+    
+    // 2. Generar nombre de usuario único basado en email + ID
+    // Sanitizamos el nombre de usuario eliminando caracteres especiales
+    const username = student.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '') + studentId;
+    
+    // 3. Generar contraseña temporal fuerte
+    const password = 'Shark' + Math.floor(1000 + Math.random() * 9000);
+    
+    // 4. Construir los datos para la API de Moodle
     const formData = new URLSearchParams();
     formData.append('wstoken', MOODLE_TOKEN);
     formData.append('wsfunction', 'core_user_create_users');
@@ -1195,18 +1202,49 @@ app.post('/api/moodle/students/:id/create', async (req, res) => {
     formData.append('users[0][lastname]', student.last_name || ' ');
     formData.append('users[0][email]', student.email);
     formData.append('users[0][auth]', 'manual');
-
+    
+    // 5. Llamar a la API de Moodle
+    console.log(`🔄 Creando usuario ${username} en Moodle...`);
+    
     const response = await axios.post(MOODLE_API_URL, formData.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
-
-    res.json({ moodleResponse: response.data, password });
+    
+    // 6. Verificar respuesta
+    if (Array.isArray(response.data) && response.data.length > 0 && response.data[0].id) {
+      console.log(`✅ Usuario Moodle creado: ID=${response.data[0].id}, Username=${username}`);
+      
+      // 7. Opcionalmente, actualizar la base de datos para guardar el ID de Moodle
+      // await db.promise().query(
+      //   'UPDATE students SET moodle_user_id = ? WHERE id = ?', 
+      //   [response.data[0].id, studentId]
+      // );
+      
+      // 8. Devolver éxito con datos
+      res.json({
+        moodleResponse: {
+          id: response.data[0].id,
+          username: username
+        },
+        password: password
+      });
+    } else {
+      console.error('❌ Respuesta inesperada de Moodle:', response.data);
+      res.status(500).json({
+        error: 'Respuesta inesperada de Moodle',
+        details: response.data
+      });
+    }
   } catch (error) {
-    console.error('❌ Error creando estudiante en Moodle:', error.response?.data || error.message);
-    res.status(500).send('Error al crear estudiante en Moodle');
+    console.error('❌ Error creando estudiante en Moodle:', 
+      error.response?.data ? JSON.stringify(error.response.data) : error.message);
+    
+    res.status(500).json({
+      error: 'Error al crear estudiante en Moodle',
+      details: error.response?.data || error.message
+    });
   }
 });
-
 
 
 
