@@ -1090,7 +1090,7 @@ app.get('/api/moodle/users', async (req, res) => {
   }
 });
 
-
+// Endpoint para crear un nuevo usuario en Moodle
 app.post('/api/moodle/users', async (req, res) => {
   const { username, password, firstname, lastname, email } = req.body;
 
@@ -1121,28 +1121,72 @@ app.post('/api/moodle/users', async (req, res) => {
   }
 });
 
-app.put('/api/moodle/users/:id', async (req, res) => {
-  const { id } = req.params;
-  const { firstname, lastname, email } = req.body;
+// 📌 Endpoint para actualizar estudiante en Moodle
+app.put('/api/moodle/students/:id/update', async (req, res) => {
+  const studentId = req.params.id;
+  const { moodleUserId, firstname, lastname, email } = req.body;
+
+  // Validar datos requeridos
+  if (!moodleUserId || !firstname || !lastname || !email) {
+    return res.status(400).json({ 
+      error: 'Datos incompletos', 
+      message: 'Se requieren moodleUserId, firstname, lastname y email' 
+    });
+  }
 
   try {
+    // Construir los datos para la API de Moodle
     const formData = new URLSearchParams();
     formData.append('wstoken', MOODLE_TOKEN);
     formData.append('wsfunction', 'core_user_update_users');
     formData.append('moodlewsrestformat', 'json');
-    formData.append('users[0][id]', id);
-    if (firstname) formData.append('users[0][firstname]', firstname);
-    if (lastname) formData.append('users[0][lastname]', lastname);
-    if (email) formData.append('users[0][email]', email);
-
+    formData.append('users[0][id]', moodleUserId);
+    formData.append('users[0][firstname]', firstname);
+    formData.append('users[0][lastname]', lastname);
+    formData.append('users[0][email]', email);
+    
+    console.log(`🔄 Actualizando usuario de Moodle ID=${moodleUserId} para estudiante ID=${studentId}`);
+    
+    // Llamar a la API de Moodle
     const response = await axios.post(MOODLE_API_URL, formData.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
-
-    res.json(response.data);
+    
+    // Verificar respuesta (core_user_update_users devuelve null cuando es exitoso)
+    // Moodle solo retorna errores si hay problemas
+    if (response.data === null || (Array.isArray(response.data) && response.data.length === 0)) {
+      console.log(`✅ Usuario de Moodle actualizado correctamente: ${moodleUserId}`);
+      
+      // Opcionalmente, actualizar el campo moodle_user_id en la tabla students si no existía
+      try {
+        await db.promise().query(
+          'UPDATE students SET moodle_user_id = ? WHERE id = ? AND (moodle_user_id IS NULL OR moodle_user_id != ?)',
+          [moodleUserId, studentId, moodleUserId]
+        );
+      } catch (dbError) {
+        // Solo log, no afecta el éxito de la operación principal
+        console.error('Error actualizando moodle_user_id en students:', dbError.message);
+      }
+      
+      res.json({ 
+        success: true, 
+        message: 'Usuario actualizado correctamente en Moodle'
+      });
+    } else {
+      console.error('❌ Respuesta inesperada de Moodle:', response.data);
+      res.status(500).json({
+        error: 'Respuesta inesperada de Moodle',
+        details: response.data
+      });
+    }
   } catch (error) {
-    console.error('❌ Error actualizando usuario:', error.message);
-    res.status(500).send('Error al actualizar usuario');
+    console.error('❌ Error actualizando usuario en Moodle:', 
+      error.response?.data ? JSON.stringify(error.response.data) : error.message);
+    
+    res.status(500).json({
+      error: 'Error al actualizar usuario en Moodle',
+      details: error.response?.data || error.message
+    });
   }
 });
 
@@ -1255,7 +1299,88 @@ app.post('/api/moodle/students/:id/create', async (req, res) => {
   }
 });
 
+// 📌 Obtener detalles de un usuario específico de Moodle
+app.get('/api/moodle/users/:id', async (req, res) => {
+  const moodleUserId = req.params.id;
+  
+  if (!moodleUserId) {
+    return res.status(400).json({ error: 'Se requiere ID de usuario de Moodle' });
+  }
 
+  try {
+    // Construir la solicitud para obtener detalles del usuario específico
+    const formData = new URLSearchParams();
+    formData.append('wstoken', MOODLE_TOKEN);
+    formData.append('wsfunction', 'core_user_get_users_by_field');
+    formData.append('moodlewsrestformat', 'json');
+    formData.append('field', 'id');
+    formData.append('values[0]', moodleUserId);
+
+    // Realizar la llamada a la API de Moodle
+    console.log(`🔍 Obteniendo detalles para usuario de Moodle ID=${moodleUserId}`);
+    
+    const response = await axios.post(MOODLE_API_URL, formData.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    // Verificar la respuesta
+    if (Array.isArray(response.data) && response.data.length > 0) {
+      // Buscamos si tenemos un estudiante asociado en nuestra base de datos
+      // (por correo electrónico)
+      const moodleUser = response.data[0];
+      
+      if (moodleUser.email) {
+        try {
+          const [students] = await db.promise().query(
+            'SELECT id, first_name, last_name FROM students WHERE email = ?', 
+            [moodleUser.email]
+          );
+          
+          if (students.length > 0) {
+            // Añadir información del estudiante a la respuesta
+            moodleUser.linkedStudent = {
+              id: students[0].id,
+              first_name: students[0].first_name,
+              last_name: students[0].last_name
+            };
+            
+            // Opcionalmente, actualizar el moodle_user_id en la tabla students si no existe
+            try {
+              await db.promise().query(
+                'UPDATE students SET moodle_user_id = ? WHERE id = ? AND (moodle_user_id IS NULL OR moodle_user_id != ?)',
+                [moodleUserId, students[0].id, moodleUserId]
+              );
+            } catch (dbUpdateError) {
+              // Solo log, no afecta la respuesta principal
+              console.error('Error actualizando moodle_user_id:', dbUpdateError.message);
+            }
+          }
+        } catch (dbError) {
+          console.error('Error buscando estudiante asociado:', dbError.message);
+          // Continuamos sin la información de estudiante vinculado
+        }
+      }
+      
+      res.json(moodleUser);
+    } else if (Array.isArray(response.data) && response.data.length === 0) {
+      res.status(404).json({ error: 'Usuario no encontrado en Moodle' });
+    } else {
+      console.error('❌ Respuesta inesperada de Moodle:', response.data);
+      res.status(500).json({
+        error: 'Respuesta inesperada de Moodle',
+        details: response.data
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error obteniendo usuario de Moodle:', 
+      error.response?.data ? JSON.stringify(error.response.data) : error.message);
+    
+    res.status(500).json({
+      error: 'Error al obtener usuario de Moodle',
+      details: error.response?.data || error.message
+    });
+  }
+});
 
 
 
