@@ -1472,14 +1472,16 @@ app.post('/api/whatsapp/bulk-send', async (req, res) => {
 
 
 // 📌 Endpoint para obtener todos los clientes
-app.get('/api/clients', async (req, res) => {
-  try {
-    const [rows] = await db.query('SELECT id, name, phone_number, email FROM clients');
+// ✅ Método clásico: funciona con 'mysql2'
+router.get('/api/clients', (req, res) => {
+  db.query('SELECT id, name, phone_number, email FROM clients', (err, rows) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'Error getting clients', error: err });
+    }
     res.json({ success: true, clients: rows });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Error getting clients', error });
-  }
+  });
 });
+
 
 
 // ESTUDIANTES EN BASE DE DATOS INTERNA //
