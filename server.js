@@ -1403,29 +1403,51 @@ app.get('/api/whatsapp-accounts', (req, res) => {
 
 
 // 📌 Cargar archivo Excel y registrar clientes
-app.post('/api/clients/upload-excel', upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No se ha enviado ningún archivo' });
-    }
 
+app.post('/api/clients/upload-excel', upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No se ha enviado ningún archivo' });
+  }
+
+  try {
     const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-    const insertPromises = data.map((row) => {
-      const { name, phone_number, email } = row;
-      if (!name || !phone_number) return null;
+    // Lleva la cuenta de cuántos inserts quedan por terminar
+    let pending = 0;
+    let errorOnInsert = null;
 
-      return db.promise().query(
+    // Si no hay nada, termina
+    if (!data.length) return res.json({ message: 'Archivo vacío o sin datos.' });
+
+    data.forEach((row) => {
+      const { name, phone_number, email } = row;
+      if (!name || !phone_number) return;
+
+      pending++;
+      db.query(
         'INSERT INTO clients (name, phone_number, email) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE updated_at = NOW()',
-        [name, phone_number, email || null]
+        [name, phone_number, email || null],
+        (err, result) => {
+          pending--;
+          if (err && !errorOnInsert) {
+            errorOnInsert = err;
+          }
+          if (pending === 0) {
+            if (errorOnInsert) {
+              return res.status(500).json({ error: 'Error insertando clientes', details: errorOnInsert.message });
+            }
+            return res.json({ message: 'Clientes cargados exitosamente' });
+          }
+        }
       );
     });
 
-    await Promise.all(insertPromises.filter(Boolean));
-
-    res.json({ message: 'Clientes cargados exitosamente' });
+    // Si no hubo ningún row válido
+    if (pending === 0) {
+      return res.json({ message: 'No se encontró ningún cliente válido en el archivo.' });
+    }
   } catch (error) {
     console.error('❌ Error al procesar Excel:', error.message);
     res.status(500).json({ error: 'Error al procesar el archivo Excel' });
@@ -1433,17 +1455,28 @@ app.post('/api/clients/upload-excel', upload.single('file'), async (req, res) =>
 });
 
 // 📌 Endpoint para enviar mensajes masivos a clientes de WhatsApp
-app.post('/api/whatsapp/bulk-send', async (req, res) => {
+app.post('/api/whatsapp/bulk-send', (req, res) => {
   const { message } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'El mensaje es requerido' });
   }
 
-  try {
-    const [clients] = await db.promise().query('SELECT phone_number FROM clients WHERE phone_number IS NOT NULL LIMIT 10');
+  db.query('SELECT phone_number FROM clients WHERE phone_number IS NOT NULL LIMIT 10', async (err, clients) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error al obtener clientes', details: err.message });
+    }
 
-    const sendPromises = clients.map(async ({ phone_number }) => {
+    // Enviar mensajes (puedes hacerlos en paralelo o en serie)
+    let sentTo = [];
+    let errors = [];
+    let pending = clients.length;
+
+    if (!pending) {
+      return res.json({ message: 'No hay clientes a quienes enviar.' });
+    }
+
+    clients.forEach(({ phone_number }) => {
       const data = {
         messaging_product: 'whatsapp',
         to: phone_number,
@@ -1451,23 +1484,32 @@ app.post('/api/whatsapp/bulk-send', async (req, res) => {
         text: { body: message }
       };
 
-      await axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, data, {
+      axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, data, {
         headers: {
           Authorization: `Bearer ${ACCESS_TOKEN}`,
           'Content-Type': 'application/json'
         }
+      })
+      .then(() => {
+        sentTo.push(phone_number);
+        pending--;
+        if (pending === 0) finish();
+      })
+      .catch((error) => {
+        errors.push({ phone_number, error: error.message });
+        pending--;
+        if (pending === 0) finish();
       });
-
-      return phone_number;
     });
 
-    const sentTo = await Promise.all(sendPromises);
-
-    res.json({ message: `Mensaje enviado a ${sentTo.length} clientes`, recipients: sentTo });
-  } catch (error) {
-    console.error('❌ Error en envío masivo:', error.message);
-    res.status(500).json({ error: 'Error durante el envío masivo' });
-  }
+    function finish() {
+      if (errors.length) {
+        res.status(500).json({ message: `Algunos mensajes fallaron`, sentTo, errors });
+      } else {
+        res.json({ message: `Mensaje enviado a ${sentTo.length} clientes`, recipients: sentTo });
+      }
+    }
+  });
 });
 
 
