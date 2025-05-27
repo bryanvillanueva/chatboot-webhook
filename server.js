@@ -1515,7 +1515,7 @@ app.post('/api/whatsapp/bulk-send', (req, res) => {
 
 // 📌 Endpoint para obtener todos los clientes
 // ✅ Método clásico: funciona con 'mysql2'
-router.get('/api/clients', (req, res) => {
+app.get('/api/clients', (req, res) => {
   db.query('SELECT id, name, phone_number, email FROM clients', (err, rows) => {
     if (err) {
       return res.status(500).json({ success: false, message: 'Error getting clients', error: err });
