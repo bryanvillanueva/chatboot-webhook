@@ -1383,6 +1383,21 @@ app.get('/api/moodle/users/:id', async (req, res) => {
 });
 
 
+// SIMULACIONES DE WP // 
+
+app.get('/api/whatsapp-accounts', (req, res) => {
+  res.json([
+    {
+      id: 1,
+      number: '0405034804',
+      status: 'Verificado',
+      created_at: '2024-10-01',
+      wa_link: 'https://wa.me/message/M3Q2BGINBFE3P1',
+      meta_api: true,
+      connected: true
+    }
+  ]);
+});
 
 
 // ESTUDIANTES EN BASE DE DATOS INTERNA //
