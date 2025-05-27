@@ -1472,7 +1472,7 @@ app.post('/api/whatsapp/bulk-send', async (req, res) => {
 
 
 // 📌 Endpoint para obtener todos los clientes
-router.get('/api/clients', async (req, res) => {
+app.get('/api/clients', async (req, res) => {
   try {
     const [rows] = await db.query('SELECT id, name, phone_number, email FROM clients');
     res.json({ success: true, clients: rows });
