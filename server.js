@@ -1454,108 +1454,85 @@ app.post('/api/clients/upload-excel', upload.single('file'), (req, res) => {
   }
 });
 
-// 📌 Envío masivo de la plantilla "oferta" (Marketing, header IMAGE + botón COPY_CODE)
+// 📌 Envío masivo de texto + guardado en tabla `messages`
 app.post('/api/whatsapp/bulk-send', async (req, res) => {
+  const { message, clientIds = [] } = req.body;   // opcionalmente recibes IDs
+
+  if (!message) {
+    return res.status(400).json({ error: 'El mensaje es requerido' });
+  }
+
   try {
-    const {
-      headerImageUrl,                // URL pública de la imagen (requerido)
-      couponCode,                    // Código a copiar en el botón  (≤15 car.)
-      bodyParams = [],               // Variables {{1}}, {{2}}, …   de tu cuerpo
-      languageCode = 'es_CO',        // Idioma aprobado = Español (COL)
-      limit = 10                     // Nº de destinatarios a procesar
-    } = req.body;
+    /* 1️⃣  Obtener los destinatarios */
+    const [clients] = await db
+      .promise()
+      .query(
+        clientIds.length
+          ? 'SELECT id, phone_number FROM clients WHERE id IN (?) AND phone_number IS NOT NULL'
+          : 'SELECT id, phone_number FROM clients WHERE phone_number IS NOT NULL LIMIT 10',
+        clientIds.length ? [clientIds] : []
+      );
 
-    if (!headerImageUrl || !couponCode) {
-      return res.status(400).json({
-        error: 'headerImageUrl y couponCode son obligatorios'
-      });
-    }
-
-    /* 1️⃣  Traer teléfonos con opt-in */
-    const [clients] = await db.promise().query(
-      `SELECT phone_number FROM clients WHERE phone_number IS NOT NULL LIMIT ?`,
-      [limit]
-    );
     if (!clients.length) {
       return res.json({ message: 'No hay clientes a quienes enviar.' });
     }
 
-    /* 2️⃣  Crear las peticiones en paralelo */
-    const requests = clients.map(({ phone_number: to }) => {
-      const data = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to,
-        type: 'template',
-        template: {
-          name: 'oferta',
-          language: { code: languageCode },
-          components: [
-            /* Header IMAGE */
-            {
-              type: 'header',
-              parameters: [
-                { type: 'image', image: { link: headerImageUrl } }
-              ]
-            },
-            /* Body con variables (opcional) */
-            ...(bodyParams.length
-              ? [{
-                  type: 'body',
-                  parameters: bodyParams.map(t => ({ type: 'text', text: t }))
-                }]
-              : []),
-            /* Botón COPY_CODE – index 0 (se puede enviar sólo uno) */
-            {
-              type: 'button',
-              sub_type: 'copy_code',           // ← Cloud API 21.0
-              index: '0',
-              parameters: [
-                { type: 'copy_code', copy_code: couponCode }
-              ]
+    /* 2️⃣  Enviar y registrar resultado */
+    const results = await Promise.all(
+      clients.map(({ id, phone_number }) => {
+        const payload = {
+          messaging_product: 'whatsapp',
+          to: phone_number,
+          type: 'text',
+          text: { body: message }
+        };
+        const url = `https://graph.facebook.com/v21.0/${process.env.PHONE_NUMBER_ID}/messages`;
+
+        return axios
+          .post(url, payload, {
+            headers: {
+              Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
+              'Content-Type': 'application/json'
             }
-          ]
-        }
-      };
+          })
+          .then(async () => {
+            // Guardar éxito
+            await db
+              .promise()
+              .query(
+                `INSERT INTO messages (conversation_id, sender, message, status, sent_at)
+                 VALUES (?, 'Sharky', ?, 'sent', NOW())`,
+                [id, message]
+              );
+            return { ok: true, phone_number };
+          })
+          .catch(async (err) => {
+            // Guardar fallo
+            await db
+              .promise()
+              .query(
+                `INSERT INTO messages (conversation_id, sender, message, status, sent_at, error_detail)
+                 VALUES (?, 'Sharky', ?, 'error', NOW(), ?)`,
+                [id, message, err.response?.data || err.message]
+              );
+            return { ok: false, phone_number, error: err.message };
+          });
+      })
+    );
 
-      return axios.post(
-        `https://graph.facebook.com/v21.0/${process.env.PHONE_NUMBER_ID}/messages`,
-        data,
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      )
-      .then(() => ({ ok: true, to }))
-      .catch(err => ({
-        ok: false,
-        to,
-        error: err.response?.data || err.message
-      }));
-    });
+    /* 3️⃣  Responder al frontend */
+    const sentTo = results.filter(r => r.ok).map(r => r.phone_number);
+    const errors = results.filter(r => !r.ok);
 
-    /* 3️⃣  Esperar resultados */
-    const results = await Promise.all(requests);
-    const sent   = results.filter(r => r.ok).map(r => r.to);
-    const failed = results.filter(r => !r.ok);
-
-    return failed.length
-      ? res.status(207).json({
-          message: 'Algunos mensajes fallaron',
-          sentTo: sent,
-          errors: failed
-        })
-      : res.json({
-          message: `Mensaje enviado a ${sent.length} clientes`,
-          recipients: sent
-        });
-
+    return errors.length
+      ? res.status(207).json({ message: 'Algunos mensajes fallaron', sentTo, errors })
+      : res.json({ message: `Mensaje enviado a ${sentTo.length} clientes`, recipients: sentTo });
   } catch (err) {
+    console.error('❌ bulk-send error:', err);
     res.status(500).json({ error: 'Error interno', details: err.message });
   }
 });
+
 
 
 // 📌 Endpoint para obtener todos los clientes
