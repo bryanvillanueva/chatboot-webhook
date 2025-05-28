@@ -1454,62 +1454,107 @@ app.post('/api/clients/upload-excel', upload.single('file'), (req, res) => {
   }
 });
 
-// 📌 Endpoint para enviar mensajes masivos a clientes de WhatsApp
-app.post('/api/whatsapp/bulk-send', (req, res) => {
-  const { message } = req.body;
+// 📌 Envío masivo de la plantilla "oferta" (Marketing, header IMAGE + botón COPY_CODE)
+app.post('/api/whatsapp/bulk-send', async (req, res) => {
+  try {
+    const {
+      headerImageUrl,                // URL pública de la imagen (requerido)
+      couponCode,                    // Código a copiar en el botón  (≤15 car.)
+      bodyParams = [],               // Variables {{1}}, {{2}}, …   de tu cuerpo
+      languageCode = 'es_CO',        // Idioma aprobado = Español (COL)
+      limit = 10                     // Nº de destinatarios a procesar
+    } = req.body;
 
-  if (!message) {
-    return res.status(400).json({ error: 'El mensaje es requerido' });
-  }
-
-  db.query('SELECT phone_number FROM clients WHERE phone_number IS NOT NULL LIMIT 10', async (err, clients) => {
-    if (err) {
-      return res.status(500).json({ error: 'Error al obtener clientes', details: err.message });
+    if (!headerImageUrl || !couponCode) {
+      return res.status(400).json({
+        error: 'headerImageUrl y couponCode son obligatorios'
+      });
     }
 
-    // Enviar mensajes (puedes hacerlos en paralelo o en serie)
-    let sentTo = [];
-    let errors = [];
-    let pending = clients.length;
-
-    if (!pending) {
+    /* 1️⃣  Traer teléfonos con opt-in */
+    const [clients] = await db.promise().query(
+      `SELECT phone_number FROM clients WHERE phone_number IS NOT NULL LIMIT ?`,
+      [limit]
+    );
+    if (!clients.length) {
       return res.json({ message: 'No hay clientes a quienes enviar.' });
     }
 
-    clients.forEach(({ phone_number }) => {
+    /* 2️⃣  Crear las peticiones en paralelo */
+    const requests = clients.map(({ phone_number: to }) => {
       const data = {
         messaging_product: 'whatsapp',
-        to: phone_number,
-        type: 'text',
-        text: { body: message }
+        recipient_type: 'individual',
+        to,
+        type: 'template',
+        template: {
+          name: 'oferta',
+          language: { code: languageCode },
+          components: [
+            /* Header IMAGE */
+            {
+              type: 'header',
+              parameters: [
+                { type: 'image', image: { link: headerImageUrl } }
+              ]
+            },
+            /* Body con variables (opcional) */
+            ...(bodyParams.length
+              ? [{
+                  type: 'body',
+                  parameters: bodyParams.map(t => ({ type: 'text', text: t }))
+                }]
+              : []),
+            /* Botón COPY_CODE – index 0 (se puede enviar sólo uno) */
+            {
+              type: 'button',
+              sub_type: 'copy_code',           // ← Cloud API 21.0
+              index: '0',
+              parameters: [
+                { type: 'copy_code', copy_code: couponCode }
+              ]
+            }
+          ]
+        }
       };
 
-      axios.post(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, data, {
-        headers: {
-          Authorization: `Bearer ${ACCESS_TOKEN}`,
-          'Content-Type': 'application/json'
+      return axios.post(
+        `https://graph.facebook.com/v21.0/${process.env.PHONE_NUMBER_ID}/messages`,
+        data,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
         }
-      })
-      .then(() => {
-        sentTo.push(phone_number);
-        pending--;
-        if (pending === 0) finish();
-      })
-      .catch((error) => {
-        errors.push({ phone_number, error: error.message });
-        pending--;
-        if (pending === 0) finish();
-      });
+      )
+      .then(() => ({ ok: true, to }))
+      .catch(err => ({
+        ok: false,
+        to,
+        error: err.response?.data || err.message
+      }));
     });
 
-    function finish() {
-      if (errors.length) {
-        res.status(500).json({ message: `Algunos mensajes fallaron`, sentTo, errors });
-      } else {
-        res.json({ message: `Mensaje enviado a ${sentTo.length} clientes`, recipients: sentTo });
-      }
-    }
-  });
+    /* 3️⃣  Esperar resultados */
+    const results = await Promise.all(requests);
+    const sent   = results.filter(r => r.ok).map(r => r.to);
+    const failed = results.filter(r => !r.ok);
+
+    return failed.length
+      ? res.status(207).json({
+          message: 'Algunos mensajes fallaron',
+          sentTo: sent,
+          errors: failed
+        })
+      : res.json({
+          message: `Mensaje enviado a ${sent.length} clientes`,
+          recipients: sent
+        });
+
+  } catch (err) {
+    res.status(500).json({ error: 'Error interno', details: err.message });
+  }
 });
 
 
