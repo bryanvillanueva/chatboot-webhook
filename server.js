@@ -1454,16 +1454,16 @@ app.post('/api/clients/upload-excel', upload.single('file'), (req, res) => {
   }
 });
 
-// 📌 Envío masivo de texto + guardado en tabla `messages`
+// 📌 Envío masivo de texto y registro en BD (estructura original)
 app.post('/api/whatsapp/bulk-send', async (req, res) => {
-  const { message, clientIds = [] } = req.body;   // opcionalmente recibes IDs
+  const { message, clientIds = [] } = req.body;  // ← IDs recibidos del frontend
 
   if (!message) {
     return res.status(400).json({ error: 'El mensaje es requerido' });
   }
 
   try {
-    /* 1️⃣  Obtener los destinatarios */
+    /* 1️⃣  Obtener destinatarios */
     const [clients] = await db
       .promise()
       .query(
@@ -1477,7 +1477,7 @@ app.post('/api/whatsapp/bulk-send', async (req, res) => {
       return res.json({ message: 'No hay clientes a quienes enviar.' });
     }
 
-    /* 2️⃣  Enviar y registrar resultado */
+    /* 2️⃣  Enviar mensajes en paralelo */
     const results = await Promise.all(
       clients.map(({ id, phone_number }) => {
         const payload = {
@@ -1496,37 +1496,39 @@ app.post('/api/whatsapp/bulk-send', async (req, res) => {
             }
           })
           .then(async () => {
-            // Guardar éxito
+            // Guardar SOLO si el envío fue exitoso
             await db
               .promise()
               .query(
-                `INSERT INTO messages (conversation_id, sender, message, status, sent_at)
-                 VALUES (?, 'Sharky', ?, 'sent', NOW())`,
+                `INSERT INTO messages (conversation_id, sender, message, sent_at)
+                 VALUES (?, 'Sharky', ?, NOW())`,
                 [id, message]
               );
             return { ok: true, phone_number };
           })
-          .catch(async (err) => {
-            // Guardar fallo
-            await db
-              .promise()
-              .query(
-                `INSERT INTO messages (conversation_id, sender, message, status, sent_at, error_detail)
-                 VALUES (?, 'Sharky', ?, 'error', NOW(), ?)`,
-                [id, message, err.response?.data || err.message]
-              );
-            return { ok: false, phone_number, error: err.message };
-          });
+          .catch(err => ({
+            ok: false,
+            phone_number,
+            error: err.message
+          }));
       })
     );
 
-    /* 3️⃣  Responder al frontend */
+    /* 3️⃣  Preparar respuesta */
     const sentTo = results.filter(r => r.ok).map(r => r.phone_number);
     const errors = results.filter(r => !r.ok);
 
     return errors.length
-      ? res.status(207).json({ message: 'Algunos mensajes fallaron', sentTo, errors })
-      : res.json({ message: `Mensaje enviado a ${sentTo.length} clientes`, recipients: sentTo });
+      ? res.status(207).json({
+          message: 'Algunos mensajes fallaron',
+          sentTo,
+          errors
+        })
+      : res.json({
+          message: `Mensaje enviado a ${sentTo.length} clientes`,
+          recipients: sentTo
+        });
+
   } catch (err) {
     console.error('❌ bulk-send error:', err);
     res.status(500).json({ error: 'Error interno', details: err.message });
