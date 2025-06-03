@@ -138,12 +138,12 @@ app.post('/webhook', async (req, res) => {
     };
 
     // Webhooks por tipo
-    const webhookMap = {
-      'text': 'https://hook.eu2.make.com/ue8dxmxmuq6sr5own5yftq89ynethvqn',
-      'audio': 'https://hook.eu2.make.com/pch3avcjrya2et6gqol5vdoyh11txfrl',
-      'image': 'https://hook.eu2.make.com/dgxr45oyidtttvwbge4c1wjycnnlfj4y',
-      'document': 'https://hook.eu2.make.com/dgxr45oyidtttvwbge4c1wjycnnlfj4y'
-    };
+      const webhookMap = {
+          'text': 'https://hook.eu2.make.com/ve2tavn6hjsvscq1t3q5y6jc0m47ee68',
+          'audio': 'https://hook.eu2.make.com/pch3avcjrya2et6gqol5vdoyh11txfrl',
+          'image': 'https://hook.eu2.make.com/smdk4pbh2txc94fdvj73mmpt3ehdxuj3',
+          'document': 'https://hook.eu2.make.com/smdk4pbh2txc94fdvj73mmpt3ehdxuj3'
+      };
 
     if (messageType === 'image') {
       // Si es imagen, guarda el mensaje en buffer y espera 20 seg para ver si llega texto relacionado
