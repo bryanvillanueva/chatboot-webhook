@@ -252,6 +252,40 @@ app.post('/send-message', async (req, res) => {
     }
 });
 
+app.post('/send-audio', async (req, res) => {
+  const { to, audioUrl } = req.body;
+
+  if (!to || !audioUrl) {
+    return res.status(400).send('Datos incompletos: se requiere "to" y "audioUrl"');
+  }
+
+  try {
+    const data = {
+      messaging_product: 'whatsapp',
+      to: to,
+      type: 'audio',
+      audio: {
+        link: audioUrl
+      }
+    };
+
+    const url = `https://graph.facebook.com/v21.0/559822483873940/messages`;
+
+    const whatsappResponse = await axios.post(url, data, {
+      headers: {
+        'Authorization': `Bearer ${ACCESS_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('✅ Audio enviado a WhatsApp:', whatsappResponse.data);
+    res.status(200).send('Audio enviado');
+  } catch (error) {
+    console.error('❌ Error al enviar audio a WhatsApp:', error.response ? error.response.data : error.message);
+    res.status(500).send('Error al enviar audio');
+  }
+});
+
 // End point para enviar mensajes desde el frontend a WhatsApp
 
 app.post('/send-manual-message', async (req, res) => {
