@@ -55,6 +55,9 @@ const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 
 const fs = require('fs');
 
+const messageBuffer = {}; // Almacena temporalmente mensajes por userId
+const WAIT_TIME = 20000; // 20 segundos
+
 // 📌 Endpoint para manejar la verificación del webhook
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
@@ -68,48 +71,153 @@ app.get('/webhook', (req, res) => {
     }
 });
 
-// 📌 Endpoint para recibir mensajes de WhatsApp y enviarlos a Make (text, audio, image, document)
+// // 📌 Endpoint para recibir mensajes de WhatsApp y enviarlos a Make (text, audio, image, document)
+// app.post('/webhook', async (req, res) => {
+//   console.log('Mensaje recibido en Webhook:', JSON.stringify(req.body, null, 2));
+//   const body = req.body;
+
+//   if (body.object) {
+//       // Assume messages are in: body.entry[0].changes[0].value.messages
+//       const messagesArray = body.entry?.[0]?.changes?.[0]?.value?.messages;
+
+//       // Determine message type
+//       let messageType = 'text'; // default
+//       if (Array.isArray(messagesArray)) {
+//           const firstMessage = messagesArray[0];
+//           if (firstMessage) {
+//               messageType = firstMessage.type;
+//           }
+//       }
+
+//       // Choose target webhook URL based on message type
+//       const webhookMap = {
+//           'text': 'https://hook.eu2.make.com/ve2tavn6hjsvscq1t3q5y6jc0m47ee68',
+//           'audio': 'https://hook.eu2.make.com/pch3avcjrya2et6gqol5vdoyh11txfrl',
+//           'image': 'https://hook.eu2.make.com/smdk4pbh2txc94fdvj73mmpt3ehdxuj3',
+//           'document': 'https://hook.eu2.make.com/smdk4pbh2txc94fdvj73mmpt3ehdxuj3'
+//       };
+
+//       // Default to text webhook if type is not recognized
+//       const targetWebhook = webhookMap[messageType] || webhookMap['text'];
+
+//       try {
+//           const makeResponse = await axios.post(targetWebhook, body);
+//           console.log('✅ Mensaje enviado a Make:', makeResponse.status, 'Webhook:', targetWebhook);
+//       } catch (error) {
+//           console.error('❌ Error al enviar mensaje a Make:', error.message);
+//       }
+
+//       res.status(200).send('EVENT_RECEIVED');
+//   } else {
+//       res.status(404).send('No encontrado');
+//   }
+// });
+
 app.post('/webhook', async (req, res) => {
   console.log('Mensaje recibido en Webhook:', JSON.stringify(req.body, null, 2));
   const body = req.body;
 
   if (body.object) {
-      // Assume messages are in: body.entry[0].changes[0].value.messages
-      const messagesArray = body.entry?.[0]?.changes?.[0]?.value?.messages;
+    const messagesArray = body.entry?.[0]?.changes?.[0]?.value?.messages;
+    if (!Array.isArray(messagesArray) || messagesArray.length === 0) {
+      return res.status(400).send('No messages found');
+    }
 
-      // Determine message type
-      let messageType = 'text'; // default
-      if (Array.isArray(messagesArray)) {
-          const firstMessage = messagesArray[0];
-          if (firstMessage) {
-              messageType = firstMessage.type;
-          }
-      }
+    const message = messagesArray[0];
+    const messageType = message.type;
+    const userId = message.from;
 
-      // Choose target webhook URL based on message type
-      const webhookMap = {
-          'text': 'https://hook.eu2.make.com/ve2tavn6hjsvscq1t3q5y6jc0m47ee68',
-          'audio': 'https://hook.eu2.make.com/pch3avcjrya2et6gqol5vdoyh11txfrl',
-          'image': 'https://hook.eu2.make.com/smdk4pbh2txc94fdvj73mmpt3ehdxuj3',
-          'document': 'https://hook.eu2.make.com/smdk4pbh2txc94fdvj73mmpt3ehdxuj3'
-      };
-
-      // Default to text webhook if type is not recognized
-      const targetWebhook = webhookMap[messageType] || webhookMap['text'];
-
+    // Función para enviar a Make y limpiar buffer
+    const sendToMake = async (payload, webhookUrl) => {
       try {
-          const makeResponse = await axios.post(targetWebhook, body);
-          console.log('✅ Mensaje enviado a Make:', makeResponse.status, 'Webhook:', targetWebhook);
+        const makeResponse = await axios.post(webhookUrl, payload);
+        console.log('✅ Mensaje enviado a Make:', makeResponse.status, 'Webhook:', webhookUrl);
       } catch (error) {
-          console.error('❌ Error al enviar mensaje a Make:', error.message);
+        console.error('❌ Error al enviar mensaje a Make:', error.message);
       }
+    };
 
-      res.status(200).send('EVENT_RECEIVED');
+    // Webhooks por tipo
+    const webhookMap = {
+      'text': 'https://hook.eu2.make.com/ue8dxmxmuq6sr5own5yftq89ynethvqn',
+      'audio': 'https://hook.eu2.make.com/pch3avcjrya2et6gqol5vdoyh11txfrl',
+      'image': 'https://hook.eu2.make.com/dgxr45oyidtttvwbge4c1wjycnnlfj4y',
+      'document': 'https://hook.eu2.make.com/dgxr45oyidtttvwbge4c1wjycnnlfj4y'
+    };
+
+    if (messageType === 'image') {
+      // Si es imagen, guarda el mensaje en buffer y espera 20 seg para ver si llega texto relacionado
+      messageBuffer[userId] = {
+        imageMessage: message,
+        textMessage: null,
+        timeout: setTimeout(async () => {
+          // Pasados 20 seg sin texto, enviar solo imagen sin caption
+          const payload = {
+            ...body,
+            entry: [{
+              ...body.entry[0],
+              changes: [{
+                ...body.entry[0].changes[0],
+                value: {
+                  ...body.entry[0].changes[0].value,
+                  messages: [messageBuffer[userId].imageMessage]
+                }
+              }]
+            }]
+          };
+          await sendToMake(payload, webhookMap['image']);
+          delete messageBuffer[userId];
+        }, WAIT_TIME)
+      };
+      return res.status(200).send('EVENT_RECEIVED');
+    }
+
+    if (messageType === 'text') {
+      // Si hay imagen previa en buffer para este userId, combinamos el texto como caption y enviamos
+      if (messageBuffer[userId] && messageBuffer[userId].imageMessage) {
+        clearTimeout(messageBuffer[userId].timeout);
+
+        // Modificamos el mensaje de imagen para agregar caption con el texto recibido
+        const combinedImageMessage = {
+          ...messageBuffer[userId].imageMessage,
+          image: {
+            ...messageBuffer[userId].imageMessage.image,
+            caption: message.text.body
+          }
+        };
+
+        const payload = {
+          ...body,
+          entry: [{
+            ...body.entry[0],
+            changes: [{
+              ...body.entry[0].changes[0],
+              value: {
+                ...body.entry[0].changes[0].value,
+                messages: [combinedImageMessage]
+              }
+            }]
+          }]
+        };
+
+        await sendToMake(payload, webhookMap['image']);
+        delete messageBuffer[userId];
+        return res.status(200).send('EVENT_RECEIVED');
+      } else {
+        // No hay imagen previa, enviamos texto normalmente
+        await sendToMake(body, webhookMap['text']);
+        return res.status(200).send('EVENT_RECEIVED');
+      }
+    }
+
+    // Para otros tipos (audio, documento) enviar normal sin buffer
+    const targetWebhook = webhookMap[messageType] || webhookMap['text'];
+    await sendToMake(body, targetWebhook);
+    return res.status(200).send('EVENT_RECEIVED');
   } else {
-      res.status(404).send('No encontrado');
+    res.status(404).send('No encontrado');
   }
 });
-
 
 // 📌 Endpoint para enviar mensajes de respuesta a WhatsApp
 app.post('/send-message', async (req, res) => {
