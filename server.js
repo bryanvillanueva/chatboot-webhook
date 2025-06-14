@@ -1809,66 +1809,46 @@ app.delete('/students/:id', async (req, res) => {
 
 // Endpoint que recibe el redirect de Facebook OAuth
 app.get('/auth/facebook/callback', async (req, res) => {
-  const { code, state } = req.query;
-
-  if (!code) {
-    return res.status(400).send('Missing code from Facebook');
-  }
-
   try {
-    // 1. Intercambia el code por un access_token
-    const tokenRes = await axios.get('https://graph.facebook.com/v23.0/oauth/access_token', {
-      params: {
-        client_id: process.env.FB_APP_ID,
-        redirect_uri: 'https://crm.sharkagency.co/auth/facebook/callback', // debe ser idéntico al configurado en Facebook Developer
-        client_secret: process.env.FB_APP_SECRET,
-        code,
-      },
-    });
+    const { code, state } = req.query;
+    const stateData = JSON.parse(decodeURIComponent(state));
 
-    const access_token = tokenRes.data.access_token;
+    // Verificar que el estado sea válido
+    if (!stateData || !stateData.timestamp || Date.now() - stateData.timestamp > 3600000) {
+      return res.redirect('https://crm.sharkagency.co/login?error=invalid_state');
+    }
 
-    // 2. Obtiene el perfil básico del usuario que autorizó
-    const profileRes = await axios.get('https://graph.facebook.com/v23.0/me', {
+    // Intercambiar el código por un token de acceso
+    const tokenResponse = await axios.get('https://graph.facebook.com/v23.0/oauth/access_token', {
       params: {
-        access_token,
-        fields: 'id,name,email'
+        client_id: process.env.FACEBOOK_APP_ID,
+        redirect_uri: 'https://crm.sharkagency.co/auth/facebook/callback',
+        client_secret: process.env.FACEBOOK_APP_SECRET,
+        code
       }
     });
-    const facebookProfile = profileRes.data;
 
-    // 3. Guarda aquí el access_token y el usuario en tu base de datos (puedes implementar esta función)
-    // Este código va dentro del try, después de obtener 'facebookProfile' y 'access_token'
-const { id: facebook_id, name, email } = facebookProfile;
-const access_token_str = access_token; // Ya lo tienes del paso anterior
+    const { access_token } = tokenResponse.data;
 
-// Si tienes la info de company_id la puedes pasar aquí, si no, pon NULL o asígnala después.
-const company_id = null;
+    // Obtener información del perfil
+    const profileResponse = await axios.get('https://graph.facebook.com/me', {
+      params: {
+        fields: 'id,name,email',
+        access_token
+      }
+    });
 
-// Guarda (o actualiza si ya existe) el usuario en la base de datos
-db.query(
-  `INSERT INTO users (company_id, facebook_id, name, email, access_token, updated_at)
-   VALUES (?, ?, ?, ?, ?, NOW())
-   ON DUPLICATE KEY UPDATE
-     name = VALUES(name),
-     email = VALUES(email),
-     access_token = VALUES(access_token),
-     updated_at = NOW()`,
-  [company_id, facebook_id, name, email, access_token_str],
-  (err, result) => {
-    if (err) {
-      console.error('❌ Error guardando usuario en DB:', err.message);
-      // Puedes responder error o continuar según tu flujo
-    } else {
-      console.log('✅ Usuario guardado/actualizado en DB:', facebook_id);
-      // Aquí puedes hacer el resto de tu flujo
-    }
-  }
-);
+    const facebookProfile = profileResponse.data;
 
+    // Guardar o actualizar usuario en la base de datos
+    await saveUser({
+      facebook_id: facebookProfile.id,
+      name: facebookProfile.name,
+      email: facebookProfile.email,
+      access_token
+    });
 
-    // 4. Redirige al frontend con los datos básicos (en la práctica, deberías enviar solo un token tuyo y guardar el resto en tu backend)
-    // Por simplicidad aquí mando todo por query params, pero lo recomendable es guardar el token en backend y usar sesiones seguras
+    // Redirigir al frontend con los datos
     return res.redirect(
       `https://crm.sharkagency.co/success?fb_token=${encodeURIComponent(access_token)}&fb_id=${facebookProfile.id}&name=${encodeURIComponent(facebookProfile.name)}`
     );
@@ -1907,174 +1887,6 @@ app.get('/auth/facebook/start', (req, res) => {
   
   // Redirigir directamente a Facebook
   res.redirect(facebookAuthUrl);
-});
-
-// Endpoint mejorado basado en tu código existente
-app.get('/auth/facebook/callback', async (req, res) => {
-  const { code, state, error, error_description } = req.query;
-
-  // Si hay error en la autorización de Facebook
-  if (error) {
-    console.error('❌ Facebook OAuth Error:', error, error_description);
-    return res.redirect(`https://crm.sharkagency.co/login?error=${encodeURIComponent(error)}&error_description=${encodeURIComponent(error_description || '')}`);
-  }
-
-  if (!code) {
-    console.error('❌ Missing code from Facebook');
-    return res.redirect('https://crm.sharkagency.co/login?error=missing_code');
-  }
-
-  try {
-    console.log('🔄 Intercambiando código por access_token...');
-    
-    // 1. Intercambia el code por un access_token
-    const tokenRes = await axios.get('https://graph.facebook.com/v23.0/oauth/access_token', {
-      params: {
-        client_id: process.env.FACEBOOK_APP_ID,
-        redirect_uri: 'https://crm.sharkagency.co/auth/facebook/callback',
-        client_secret: process.env.FACEBOOK_APP_SECRET,
-        code,
-      },
-    });
-
-    const access_token = tokenRes.data.access_token;
-    console.log('✅ Access token obtenido');
-
-    // 2. Obtiene el perfil básico del usuario que autorizó
-    const profileRes = await axios.get('https://graph.facebook.com/v23.0/me', {
-      params: {
-        access_token,
-        fields: 'id,name,email,picture'
-      }
-    });
-    const facebookProfile = profileRes.data;
-    console.log('✅ Perfil de usuario obtenido:', facebookProfile.name);
-
-    // 3. Obtener páginas del usuario (opcional, para futuras funcionalidades)
-    let userPages = [];
-    try {
-      const pagesRes = await axios.get('https://graph.facebook.com/v23.0/me/accounts', {
-        params: {
-          access_token,
-          fields: 'id,name,access_token,category'
-        }
-      });
-      userPages = pagesRes.data.data || [];
-      console.log(`✅ ${userPages.length} páginas encontradas`);
-    } catch (pageError) {
-      console.log('⚠️ No se pudieron obtener páginas:', pageError.message);
-    }
-
-    // 4. Guardar usuario en base de datos
-    const { id: facebook_id, name, email } = facebookProfile;
-    const access_token_str = access_token;
-    const company_id = null;
-
-    // Guardar (o actualizar si ya existe) el usuario en la base de datos
-    db.query(
-      `INSERT INTO users (company_id, facebook_id, name, email, access_token, updated_at)
-       VALUES (?, ?, ?, ?, ?, NOW())
-       ON DUPLICATE KEY UPDATE
-         name = VALUES(name),
-         email = VALUES(email),
-         access_token = VALUES(access_token),
-         updated_at = NOW()`,
-      [company_id, facebook_id, name, email, access_token_str],
-      (err, result) => {
-        if (err) {
-          console.error('❌ Error guardando usuario en DB:', err.message);
-        } else {
-          console.log('✅ Usuario guardado/actualizado en DB:', facebook_id);
-        }
-      }
-    );
-
-    // 5. Redirigir al frontend con información del usuario (manteniendo tu flujo actual)
-    const redirectParams = new URLSearchParams({
-      fb_token: access_token,
-      fb_id: facebook_id,
-      name: name || 'Usuario Facebook',
-      email: email || '',
-      pages: userPages.length.toString()
-    });
-
-    console.log('✅ Redirigiendo usuario al frontend...');
-    return res.redirect(`https://crm.sharkagency.co/login?${redirectParams.toString()}`);
-
-  } catch (error) {
-    console.error('❌ Error en Facebook OAuth callback:', error.response?.data || error.message);
-    return res.redirect('https://crm.sharkagency.co/login?error=oauth_error&error_description=' + encodeURIComponent('Error interno del servidor'));
-  }
-});data;
-    console.log('✅ Perfil de usuario obtenido:', facebookProfile.name);
-
-    // 3. Obtener páginas del usuario (opcional, para futuras funcionalidades)
-    let userPages = [];
-    try {
-      const pagesRes = await axios.get('https://graph.facebook.com/v23.0/me/accounts', {
-        params: {
-          access_token,
-          fields: 'id,name,access_token,category'
-        }
-      });
-      userPages = pagesRes.data.data || [];
-      console.log(`✅ ${userPages.length} páginas encontradas`);
-    } catch (pageError) {
-      console.log('⚠️ No se pudieron obtener páginas:', pageError.message);
-    }
-
-    // 4. Guardar usuario en base de datos
-    const { id: facebook_id, name, email } = facebookProfile;
-    const company_id = null; // Puedes asignar esto según tu lógica
-
-    // Usar promesa para manejar mejor el resultado
-    const saveUser = () => {
-      return new Promise((resolve, reject) => {
-        db.query(
-          `INSERT INTO users (company_id, facebook_id, name, email, access_token, updated_at)
-           VALUES (?, ?, ?, ?, ?, NOW())
-           ON DUPLICATE KEY UPDATE
-             name = VALUES(name),
-             email = VALUES(email),
-             access_token = VALUES(access_token),
-             updated_at = NOW()`,
-          [company_id, facebook_id, name, email, access_token],
-          (err, result) => {
-            if (err) {
-              console.error('❌ Error guardando usuario en DB:', err.message);
-              reject(err);
-            } else {
-              console.log('✅ Usuario guardado/actualizado en DB:', facebook_id);
-              resolve(result);
-            }
-          }
-        );
-      });
-    };
-
-    // Intentar guardar el usuario
-    try {
-      await saveUser();
-    } catch (dbError) {
-      console.error('❌ Error en base de datos, pero continuando con login');
-    }
-
-    // 5. Redirigir al frontend con información del usuario
-    const redirectParams = new URLSearchParams({
-      fb_token: access_token,
-      fb_id: facebook_id,
-      name: name || 'Usuario Facebook',
-      email: email || '',
-      pages: userPages.length.toString()
-    });
-
-    console.log('✅ Redirigiendo usuario al frontend...');
-    return res.redirect(`https://crm.sharkagency.co/login?${redirectParams.toString()}`);
-
-  } catch (error) {
-    console.error('❌ Error en Facebook OAuth callback:', error.response?.data || error.message);
-    return res.redirect('https://crm.sharkagency.co/login?error=oauth_error&error_description=' + encodeURIComponent('Error interno del servidor'));
-  }
 });
 
 // Endpoint adicional para verificar el estado de autenticación con Facebook
