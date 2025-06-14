@@ -1841,12 +1841,27 @@ app.get('/auth/facebook/callback', async (req, res) => {
     const facebookProfile = profileResponse.data;
 
     // Guardar o actualizar usuario en la base de datos
-    await saveUser({
-      facebook_id: facebookProfile.id,
-      name: facebookProfile.name,
-      email: facebookProfile.email,
-      access_token
-    });
+    const { id: facebook_id, name, email } = facebookProfile;
+    const access_token_str = access_token;
+    const company_id = null;
+
+    db.query(
+      `INSERT INTO users (company_id, facebook_id, name, email, access_token, updated_at)
+       VALUES (?, ?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE
+         name = VALUES(name),
+         email = VALUES(email),
+         access_token = VALUES(access_token),
+         updated_at = NOW()`,
+      [company_id, facebook_id, name, email, access_token_str],
+      (err, result) => {
+        if (err) {
+          console.error('❌ Error guardando usuario en DB:', err.message);
+        } else {
+          console.log('✅ Usuario guardado/actualizado en DB:', facebook_id);
+        }
+      }
+    );
 
     // Redirigir al frontend con los datos
     return res.redirect(
