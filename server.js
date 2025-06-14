@@ -1878,7 +1878,234 @@ db.query(
   }
 });
 
+// Endpoint de INICIO - Redirige al usuario a Facebook
+app.get('/auth/facebook/start', (req, res) => {
+  console.log('🚀 Iniciando proceso de autenticación con Facebook...');
+  
+  if (!process.env.FACEBOOK_APP_ID) {
+    console.error('❌ FACEBOOK_APP_ID no está configurado');
+    return res.redirect('https://crm.sharkagency.co/login?error=facebook_not_configured');
+  }
 
+  // Construir URL de autorización de Facebook
+  const state = encodeURIComponent(JSON.stringify({
+    timestamp: Date.now(),
+    source: 'crm_login'
+  }));
+
+  const scopes = 'pages_show_list,leads_retrieval,email,public_profile,pages_messaging';
+  const redirectUri = 'https://crm.sharkagency.co/auth/facebook/callback';
+
+  const facebookAuthUrl = 'https://www.facebook.com/v23.0/dialog/oauth' +
+    `?client_id=${process.env.FACEBOOK_APP_ID}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&scope=${scopes}` +
+    `&state=${state}` +
+    `&response_type=code`;
+
+  console.log('✅ Redirigiendo a Facebook para autorización...');
+  
+  // Redirigir directamente a Facebook
+  res.redirect(facebookAuthUrl);
+});
+
+// Endpoint mejorado basado en tu código existente
+app.get('/auth/facebook/callback', async (req, res) => {
+  const { code, state, error, error_description } = req.query;
+
+  // Si hay error en la autorización de Facebook
+  if (error) {
+    console.error('❌ Facebook OAuth Error:', error, error_description);
+    return res.redirect(`https://crm.sharkagency.co/login?error=${encodeURIComponent(error)}&error_description=${encodeURIComponent(error_description || '')}`);
+  }
+
+  if (!code) {
+    console.error('❌ Missing code from Facebook');
+    return res.redirect('https://crm.sharkagency.co/login?error=missing_code');
+  }
+
+  try {
+    console.log('🔄 Intercambiando código por access_token...');
+    
+    // 1. Intercambia el code por un access_token
+    const tokenRes = await axios.get('https://graph.facebook.com/v23.0/oauth/access_token', {
+      params: {
+        client_id: process.env.FACEBOOK_APP_ID,
+        redirect_uri: 'https://crm.sharkagency.co/auth/facebook/callback',
+        client_secret: process.env.FACEBOOK_APP_SECRET,
+        code,
+      },
+    });
+
+    const access_token = tokenRes.data.access_token;
+    console.log('✅ Access token obtenido');
+
+    // 2. Obtiene el perfil básico del usuario que autorizó
+    const profileRes = await axios.get('https://graph.facebook.com/v23.0/me', {
+      params: {
+        access_token,
+        fields: 'id,name,email,picture'
+      }
+    });
+    const facebookProfile = profileRes.data;
+    console.log('✅ Perfil de usuario obtenido:', facebookProfile.name);
+
+    // 3. Obtener páginas del usuario (opcional, para futuras funcionalidades)
+    let userPages = [];
+    try {
+      const pagesRes = await axios.get('https://graph.facebook.com/v23.0/me/accounts', {
+        params: {
+          access_token,
+          fields: 'id,name,access_token,category'
+        }
+      });
+      userPages = pagesRes.data.data || [];
+      console.log(`✅ ${userPages.length} páginas encontradas`);
+    } catch (pageError) {
+      console.log('⚠️ No se pudieron obtener páginas:', pageError.message);
+    }
+
+    // 4. Guardar usuario en base de datos
+    const { id: facebook_id, name, email } = facebookProfile;
+    const access_token_str = access_token;
+    const company_id = null;
+
+    // Guardar (o actualizar si ya existe) el usuario en la base de datos
+    db.query(
+      `INSERT INTO users (company_id, facebook_id, name, email, access_token, updated_at)
+       VALUES (?, ?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE
+         name = VALUES(name),
+         email = VALUES(email),
+         access_token = VALUES(access_token),
+         updated_at = NOW()`,
+      [company_id, facebook_id, name, email, access_token_str],
+      (err, result) => {
+        if (err) {
+          console.error('❌ Error guardando usuario en DB:', err.message);
+        } else {
+          console.log('✅ Usuario guardado/actualizado en DB:', facebook_id);
+        }
+      }
+    );
+
+    // 5. Redirigir al frontend con información del usuario (manteniendo tu flujo actual)
+    const redirectParams = new URLSearchParams({
+      fb_token: access_token,
+      fb_id: facebook_id,
+      name: name || 'Usuario Facebook',
+      email: email || '',
+      pages: userPages.length.toString()
+    });
+
+    console.log('✅ Redirigiendo usuario al frontend...');
+    return res.redirect(`https://crm.sharkagency.co/login?${redirectParams.toString()}`);
+
+  } catch (error) {
+    console.error('❌ Error en Facebook OAuth callback:', error.response?.data || error.message);
+    return res.redirect('https://crm.sharkagency.co/login?error=oauth_error&error_description=' + encodeURIComponent('Error interno del servidor'));
+  }
+});data;
+    console.log('✅ Perfil de usuario obtenido:', facebookProfile.name);
+
+    // 3. Obtener páginas del usuario (opcional, para futuras funcionalidades)
+    let userPages = [];
+    try {
+      const pagesRes = await axios.get('https://graph.facebook.com/v23.0/me/accounts', {
+        params: {
+          access_token,
+          fields: 'id,name,access_token,category'
+        }
+      });
+      userPages = pagesRes.data.data || [];
+      console.log(`✅ ${userPages.length} páginas encontradas`);
+    } catch (pageError) {
+      console.log('⚠️ No se pudieron obtener páginas:', pageError.message);
+    }
+
+    // 4. Guardar usuario en base de datos
+    const { id: facebook_id, name, email } = facebookProfile;
+    const company_id = null; // Puedes asignar esto según tu lógica
+
+    // Usar promesa para manejar mejor el resultado
+    const saveUser = () => {
+      return new Promise((resolve, reject) => {
+        db.query(
+          `INSERT INTO users (company_id, facebook_id, name, email, access_token, updated_at)
+           VALUES (?, ?, ?, ?, ?, NOW())
+           ON DUPLICATE KEY UPDATE
+             name = VALUES(name),
+             email = VALUES(email),
+             access_token = VALUES(access_token),
+             updated_at = NOW()`,
+          [company_id, facebook_id, name, email, access_token],
+          (err, result) => {
+            if (err) {
+              console.error('❌ Error guardando usuario en DB:', err.message);
+              reject(err);
+            } else {
+              console.log('✅ Usuario guardado/actualizado en DB:', facebook_id);
+              resolve(result);
+            }
+          }
+        );
+      });
+    };
+
+    // Intentar guardar el usuario
+    try {
+      await saveUser();
+    } catch (dbError) {
+      console.error('❌ Error en base de datos, pero continuando con login');
+    }
+
+    // 5. Redirigir al frontend con información del usuario
+    const redirectParams = new URLSearchParams({
+      fb_token: access_token,
+      fb_id: facebook_id,
+      name: name || 'Usuario Facebook',
+      email: email || '',
+      pages: userPages.length.toString()
+    });
+
+    console.log('✅ Redirigiendo usuario al frontend...');
+    return res.redirect(`https://crm.sharkagency.co/login?${redirectParams.toString()}`);
+
+  } catch (error) {
+    console.error('❌ Error en Facebook OAuth callback:', error.response?.data || error.message);
+    return res.redirect('https://crm.sharkagency.co/login?error=oauth_error&error_description=' + encodeURIComponent('Error interno del servidor'));
+  }
+});
+
+// Endpoint adicional para verificar el estado de autenticación con Facebook
+app.get('/auth/facebook/verify', async (req, res) => {
+  const { fb_token } = req.query;
+  
+  if (!fb_token) {
+    return res.status(400).json({ error: 'Token requerido' });
+  }
+
+  try {
+    // Verificar que el token siga siendo válido
+    const verifyRes = await axios.get('https://graph.facebook.com/v23.0/me', {
+      params: {
+        access_token: fb_token,
+        fields: 'id,name,email'
+      }
+    });
+    
+    res.json({ 
+      valid: true, 
+      user: verifyRes.data,
+      message: 'Token válido'
+    });
+  } catch (error) {
+    res.status(401).json({ 
+      valid: false, 
+      error: 'Token inválido o expirado' 
+    });
+  }
+});
 
 // Manejo de SIGTERM para evitar cierre abrupto en Railway
 process.on("SIGTERM", () => {
