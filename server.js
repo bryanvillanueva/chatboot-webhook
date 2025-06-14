@@ -1878,6 +1878,52 @@ db.query(
   }
 });
 
+
+// En tu backend, agregar este endpoint
+app.get('/api/config', (req, res) => {
+  res.json({
+    facebookAppId: process.env.FACEBOOK_APP_ID,
+    redirectUri: 'https://crm.sharkagency.co/auth/facebook/callback'
+  });
+});
+
+// Y en el frontend, modificar el Login para obtener la config:
+import { useEffect, useState } from 'react';
+
+const Login = () => {
+  const [facebookConfig, setFacebookConfig] = useState(null);
+  
+  useEffect(() => {
+    // Obtener configuración desde el backend
+    fetch('https://chatboot-webhook-production.up.railway.app/api/config')
+      .then(res => res.json())
+      .then(config => setFacebookConfig(config))
+      .catch(err => console.error('Error obteniendo config:', err));
+  }, []);
+
+  const handleFacebookLogin = () => {
+    if (!facebookConfig) return;
+    
+    setFacebookLoading(true);
+    setError('');
+    
+    const state = encodeURIComponent(JSON.stringify({
+      returnUrl: window.location.pathname,
+      timestamp: Date.now()
+    }));
+    
+    const fbUrl = `https://www.facebook.com/v18.0/dialog/oauth` +
+      `?client_id=${facebookConfig.facebookAppId}` +
+      `&redirect_uri=${encodeURIComponent(facebookConfig.redirectUri)}` +
+      `&scope=${SCOPES}` +
+      `&state=${state}` +
+      `&response_type=code`;
+    
+    window.location.href = fbUrl;
+  };
+};
+
+
 // Manejo de SIGTERM para evitar cierre abrupto en Railway
 process.on("SIGTERM", () => {
     console.log("🔻 Señal SIGTERM recibida. Cerrando servidor...");
