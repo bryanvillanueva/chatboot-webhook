@@ -1803,6 +1803,81 @@ app.delete('/students/:id', async (req, res) => {
 });
 
 
+//----------------------//
+// CRM FUNCIONES NUEVAS //
+//----------------------// 
+
+// Endpoint que recibe el redirect de Facebook OAuth
+app.get('/auth/facebook/callback', async (req, res) => {
+  const { code, state } = req.query;
+
+  if (!code) {
+    return res.status(400).send('Missing code from Facebook');
+  }
+
+  try {
+    // 1. Intercambia el code por un access_token
+    const tokenRes = await axios.get('https://graph.facebook.com/v23.0/oauth/access_token', {
+      params: {
+        client_id: process.env.FB_APP_ID,
+        redirect_uri: 'https://crm.sharkagency.co/auth/facebook/callback', // debe ser idéntico al configurado en Facebook Developer
+        client_secret: process.env.FB_APP_SECRET,
+        code,
+      },
+    });
+
+    const access_token = tokenRes.data.access_token;
+
+    // 2. Obtiene el perfil básico del usuario que autorizó
+    const profileRes = await axios.get('https://graph.facebook.com/v23.0/me', {
+      params: {
+        access_token,
+        fields: 'id,name,email'
+      }
+    });
+    const facebookProfile = profileRes.data;
+
+    // 3. Guarda aquí el access_token y el usuario en tu base de datos (puedes implementar esta función)
+    // Este código va dentro del try, después de obtener 'facebookProfile' y 'access_token'
+const { id: facebook_id, name, email } = facebookProfile;
+const access_token_str = access_token; // Ya lo tienes del paso anterior
+
+// Si tienes la info de company_id la puedes pasar aquí, si no, pon NULL o asígnala después.
+const company_id = null;
+
+// Guarda (o actualiza si ya existe) el usuario en la base de datos
+db.query(
+  `INSERT INTO users (company_id, facebook_id, name, email, access_token, updated_at)
+   VALUES (?, ?, ?, ?, ?, NOW())
+   ON DUPLICATE KEY UPDATE
+     name = VALUES(name),
+     email = VALUES(email),
+     access_token = VALUES(access_token),
+     updated_at = NOW()`,
+  [company_id, facebook_id, name, email, access_token_str],
+  (err, result) => {
+    if (err) {
+      console.error('❌ Error guardando usuario en DB:', err.message);
+      // Puedes responder error o continuar según tu flujo
+    } else {
+      console.log('✅ Usuario guardado/actualizado en DB:', facebook_id);
+      // Aquí puedes hacer el resto de tu flujo
+    }
+  }
+);
+
+
+    // 4. Redirige al frontend con los datos básicos (en la práctica, deberías enviar solo un token tuyo y guardar el resto en tu backend)
+    // Por simplicidad aquí mando todo por query params, pero lo recomendable es guardar el token en backend y usar sesiones seguras
+    return res.redirect(
+      `https://crm.sharkagency.co/success?fb_token=${encodeURIComponent(access_token)}&fb_id=${facebookProfile.id}&name=${encodeURIComponent(facebookProfile.name)}`
+    );
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+    return res.status(500).send('Error authenticating with Facebook');
+  }
+});
+
 // Manejo de SIGTERM para evitar cierre abrupto en Railway
 process.on("SIGTERM", () => {
     console.log("🔻 Señal SIGTERM recibida. Cerrando servidor...");
