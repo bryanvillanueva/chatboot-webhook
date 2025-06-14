@@ -1822,7 +1822,7 @@ app.get('/auth/facebook/callback', async (req, res) => {
     const tokenResponse = await axios.get('https://graph.facebook.com/v23.0/oauth/access_token', {
       params: {
         client_id: process.env.FACEBOOK_APP_ID,
-        redirect_uri: 'https://crm.sharkagency.co/auth/facebook/callback',
+        redirect_uri: 'https://chatboot-webhook-production.up.railway.app/auth/facebook/callback',
         client_secret: process.env.FACEBOOK_APP_SECRET,
         code
       }
@@ -1889,7 +1889,7 @@ app.get('/auth/facebook/start', (req, res) => {
   }));
 
   const scopes = 'pages_show_list,leads_retrieval,email,public_profile,pages_messaging';
-  const redirectUri = 'https://crm.sharkagency.co/auth/facebook/callback';
+  const redirectUri = 'https://chatboot-webhook-production.up.railway.app/auth/facebook/callback';
 
   const facebookAuthUrl = 'https://www.facebook.com/v23.0/dialog/oauth' +
     `?client_id=${process.env.FACEBOOK_APP_ID}` +
