@@ -1809,6 +1809,7 @@ app.delete('/students/:id', async (req, res) => {
 
 // Endpoint que recibe el redirect de Facebook OAuth
 // Endpoint que recibe el redirect de Facebook OAuth
+// Endpoint que recibe el redirect de Facebook OAuth
 app.get('/auth/facebook/callback', async (req, res) => {
   try {
     const { code, state } = req.query;
@@ -1845,18 +1846,16 @@ app.get('/auth/facebook/callback', async (req, res) => {
     const { id: facebook_id, name, email } = facebookProfile;
     const access_token_str = access_token;
     const company_id = null;
-    const role = 'Facebook User'; // Puedes definir roles según tu lógica de negocio
 
     db.query(
-      `INSERT INTO users (company_id, facebook_id, name, email, access_token, role, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, NOW())
+      `INSERT INTO users (company_id, facebook_id, name, email, access_token, updated_at)
+       VALUES (?, ?, ?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE
          name = VALUES(name),
          email = VALUES(email),
          access_token = VALUES(access_token),
-         role = VALUES(role),
          updated_at = NOW()`,
-      [company_id, facebook_id, name, email, access_token_str, role],
+      [company_id, facebook_id, name, email, access_token_str],
       (err, result) => {
         if (err) {
           console.error('❌ Error guardando usuario en DB:', err.message);
@@ -1872,7 +1871,6 @@ app.get('/auth/facebook/callback', async (req, res) => {
     redirectUrl.searchParams.set('fb_id', facebookProfile.id);
     redirectUrl.searchParams.set('name', facebookProfile.name);
     redirectUrl.searchParams.set('email', facebookProfile.email || '');
-    redirectUrl.searchParams.set('role', role);
     redirectUrl.searchParams.set('company_id', company_id || '');
 
     return res.redirect(redirectUrl.toString());
