@@ -1934,6 +1934,62 @@ app.get('/auth/facebook/verify', async (req, res) => {
   }
 });
 
+// GET /api/facebook/pages/:userId - Endpoint para obtener paginas administradas por el usuario
+app.get('/api/facebook/pages/:userId', async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    // Busca el access_token de tu usuario
+    const [userRows] = await db.promise().query(
+      'SELECT access_token FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    if (!userRows.length) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    const access_token = userRows[0].access_token;
+
+    // Llama a la API de Facebook para traer páginas
+    const fbRes = await axios.get('https://graph.facebook.com/v23.0/me/accounts', {
+      params: { access_token }
+    });
+
+    res.json({ pages: fbRes.data.data }); // Devuelve un array de páginas
+  } catch (error) {
+    console.error('❌ Error obteniendo páginas:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Error al obtener páginas de Facebook', details: error.response?.data || error.message });
+  }
+});
+
+// GET /api/facebook/businesses/:userId - Endpoint para obtener los Bussiness portfolios de un usuario
+
+app.get('/api/facebook/businesses/:userId', async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    // Busca el access_token de tu usuario
+    const [userRows] = await db.promise().query(
+      'SELECT access_token FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    if (!userRows.length) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    const access_token = userRows[0].access_token;
+
+    // Llama a la API de Facebook para traer los negocios asociados
+    const fbRes = await axios.get('https://graph.facebook.com/v23.0/me/businesses', {
+      params: { access_token }
+    });
+
+    res.json({ businesses: fbRes.data.data }); // Devuelve un array de business accounts
+  } catch (error) {
+    console.error('❌ Error obteniendo businesses:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Error al obtener negocios de Facebook', details: error.response?.data || error.message });
+  }
+});
+
+
 // Manejo de SIGTERM para evitar cierre abrupto en Railway
 process.on("SIGTERM", () => {
     console.log("🔻 Señal SIGTERM recibida. Cerrando servidor...");
