@@ -1808,6 +1808,7 @@ app.delete('/students/:id', async (req, res) => {
 //----------------------// 
 
 // Endpoint que recibe el redirect de Facebook OAuth
+// Endpoint que recibe el redirect de Facebook OAuth
 app.get('/auth/facebook/callback', async (req, res) => {
   try {
     const { code, state } = req.query;
@@ -1844,16 +1845,18 @@ app.get('/auth/facebook/callback', async (req, res) => {
     const { id: facebook_id, name, email } = facebookProfile;
     const access_token_str = access_token;
     const company_id = null;
+    const role = 'Facebook User'; // Puedes definir roles según tu lógica de negocio
 
     db.query(
-      `INSERT INTO users (company_id, facebook_id, name, email, access_token, updated_at)
-       VALUES (?, ?, ?, ?, ?, NOW())
+      `INSERT INTO users (company_id, facebook_id, name, email, access_token, role, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE
          name = VALUES(name),
          email = VALUES(email),
          access_token = VALUES(access_token),
+         role = VALUES(role),
          updated_at = NOW()`,
-      [company_id, facebook_id, name, email, access_token_str],
+      [company_id, facebook_id, name, email, access_token_str, role],
       (err, result) => {
         if (err) {
           console.error('❌ Error guardando usuario en DB:', err.message);
@@ -1863,10 +1866,16 @@ app.get('/auth/facebook/callback', async (req, res) => {
       }
     );
 
-    // Redirigir al frontend con los datos
-    return res.redirect(
-      `https://crm.sharkagency.co/success?fb_token=${encodeURIComponent(access_token)}&fb_id=${facebookProfile.id}&name=${encodeURIComponent(facebookProfile.name)}`
-    );
+    // Redirigir al frontend con los datos completos
+    const redirectUrl = new URL('https://crm.sharkagency.co/login');
+    redirectUrl.searchParams.set('fb_token', access_token);
+    redirectUrl.searchParams.set('fb_id', facebookProfile.id);
+    redirectUrl.searchParams.set('name', facebookProfile.name);
+    redirectUrl.searchParams.set('email', facebookProfile.email || '');
+    redirectUrl.searchParams.set('role', role);
+    redirectUrl.searchParams.set('company_id', company_id || '');
+
+    return res.redirect(redirectUrl.toString());
   } catch (error) {
     console.error(error.response?.data || error.message);
     return res.status(500).send('Error authenticating with Facebook');
