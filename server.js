@@ -2093,6 +2093,103 @@ app.get('/api/facebook/businesses', async (req, res) => {
 });
 
 
+// Endpoint para obtener info de wp 
+// GET /api/facebook/whatsapp-accounts?facebook_id=...
+app.get('/api/facebook/whatsapp-accounts', async (req, res) => {
+  try {
+    const facebookId = req.query.facebook_id;
+    if (!facebookId) return res.status(400).json({ error: 'Falta facebook_id' });
+
+    // Buscar access_token de ese usuario
+    const [userRows] = await db.promise().query(
+      'SELECT access_token FROM users WHERE facebook_id = ? LIMIT 1',
+      [facebookId]
+    );
+    if (!userRows.length) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    const access_token = userRows[0].access_token;
+
+    // 1. Obtener los negocios
+    const businessesRes = await axios.get('https://graph.facebook.com/v23.0/me/businesses', {
+      params: { access_token }
+    });
+    const businesses = businessesRes.data.data;
+
+    // 2. Obtener cuentas de WhatsApp Business de cada negocio
+    let whatsappAccounts = [];
+    for (const business of businesses) {
+      const waRes = await axios.get(`https://graph.facebook.com/v23.0/${business.id}/owned_whatsapp_business_accounts`, {
+        params: { access_token }
+      });
+      if (waRes.data.data && waRes.data.data.length > 0) {
+        // Por cada cuenta, puedes consultar detalles adicionales si lo deseas (ejemplo: números asociados)
+        for (const wa of waRes.data.data) {
+          // Consultar números asociados
+          let phoneNumbers = [];
+          try {
+            const pnRes = await axios.get(`https://graph.facebook.com/v23.0/${wa.id}/phone_numbers`, {
+              params: { access_token }
+            });
+            phoneNumbers = pnRes.data.data || [];
+          } catch (e) {
+            // Si falla, igual mostramos el WA business account
+          }
+          whatsappAccounts.push({
+            ...wa,
+            business_id: business.id,
+            business_name: business.name,
+            phone_numbers: phoneNumbers
+          });
+        }
+      }
+    }
+    res.json({ whatsappAccounts });
+  } catch (error) {
+    console.error('❌ Error obteniendo WhatsApp Business Accounts:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Error al obtener cuentas de WhatsApp Business', details: error.response?.data || error.message });
+  }
+});
+
+// Endpoint para obtener mas infoirmnacion de la cuenta de wp bussiness
+// GET /api/facebook/whatsapp-account-detail?facebook_id=...&wa_id=...
+app.get('/api/facebook/whatsapp-account-detail', async (req, res) => {
+  try {
+    const { facebook_id, wa_id } = req.query;
+    if (!facebook_id || !wa_id) return res.status(400).json({ error: 'Falta facebook_id o wa_id' });
+
+    // Buscar access_token del usuario
+    const [userRows] = await db.promise().query(
+      'SELECT access_token FROM users WHERE facebook_id = ? LIMIT 1',
+      [facebook_id]
+    );
+    if (!userRows.length) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    const access_token = userRows[0].access_token;
+
+    // Consultar detalles
+    const detailRes = await axios.get(`https://graph.facebook.com/v23.0/${wa_id}`, {
+      params: { access_token, fields: 'id,name,display_phone_number,timezone,verified_name,account_review_status' }
+    });
+
+    // Consultar números asociados
+    let phoneNumbers = [];
+    try {
+      const pnRes = await axios.get(`https://graph.facebook.com/v23.0/${wa_id}/phone_numbers`, {
+        params: { access_token }
+      });
+      phoneNumbers = pnRes.data.data || [];
+    } catch { /* Ignorar error */ }
+
+    res.json({ ...detailRes.data, phone_numbers: phoneNumbers });
+  } catch (error) {
+    console.error('❌ Error obteniendo detalle WhatsApp:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Error al obtener detalles', details: error.response?.data || error.message });
+  }
+});
+
+
 // Manejo de SIGTERM para evitar cierre abrupto en Railway
 process.on("SIGTERM", () => {
     console.log("🔻 Señal SIGTERM recibida. Cerrando servidor...");
