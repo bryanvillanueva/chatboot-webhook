@@ -1893,7 +1893,47 @@ app.get('/auth/facebook/start', (req, res) => {
     source: 'crm_login'
   }));
 
-  const scopes = 'pages_show_list,leads_retrieval,email,public_profile,pages_messaging';
+  const scopes = [
+    'instagram_manage_events',
+    'page_events',
+    'ads_management',
+    'ads_read',
+    'business_management',
+    'catalog_management',
+    'commerce_account_manage_orders',
+    'commerce_account_read_orders',
+    'commerce_account_read_reports',
+    'commerce_account_read_settings',
+    'instagram_basic',
+    'whatsapp_business_messaging',
+    'whatsapp_business_management',
+    'whatsapp_business_manage_events',
+    'read_page_mailboxes',
+    'read_insights',
+    'publish_video',
+    'pages_show_list',
+    'pages_read_user_content',
+    'pages_read_engagement',
+    'pages_messaging',
+    'pages_manage_posts',
+    'pages_manage_metadata',
+    'pages_manage_instant_articles',
+    'pages_manage_engagement',
+    'pages_manage_ads',
+    'pages_manage_cta',
+    'manage_fundraisers',
+    'leads_retrieval',
+    'instagram_shopping_tag_products',
+    'instagram_manage_messages',
+    'instagram_manage_insights',
+    'instagram_branded_content_ads_brand',
+    'instagram_branded_content_brand',
+    'instagram_branded_content_creator',
+    'instagram_content_publish',
+    'instagram_manage_comments',
+    'email',
+    'public_profile'
+  ].join(',');
   const redirectUri = 'https://chatboot-webhook-production.up.railway.app/auth/facebook/callback';
 
   const facebookAuthUrl = 'https://www.facebook.com/v23.0/dialog/oauth' +
