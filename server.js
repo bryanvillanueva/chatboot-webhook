@@ -1808,8 +1808,6 @@ app.delete('/students/:id', async (req, res) => {
 //----------------------// 
 
 // Endpoint que recibe el redirect de Facebook OAuth
-// Endpoint que recibe el redirect de Facebook OAuth
-// Endpoint que recibe el redirect de Facebook OAuth
 app.get('/auth/facebook/callback', async (req, res) => {
   try {
     const { code, state } = req.query;
@@ -1942,6 +1940,57 @@ app.get('/auth/facebook/verify', async (req, res) => {
 });
 
 // GET /api/facebook/pages/:userId - Endpoint para obtener paginas administradas por el usuario
+app.post('/api/facebook/pages/sync', async (req, res) => {
+  try {
+    const { facebook_id } = req.body;
+    if (!facebook_id) return res.status(400).json({ error: 'Falta facebook_id' });
+
+    // Busca el access_token del usuario
+    const [userRows] = await db.promise().query(
+      'SELECT id AS user_id, access_token FROM users WHERE facebook_id = ? LIMIT 1',
+      [facebook_id]
+    );
+    if (!userRows.length) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    const { user_id, access_token } = userRows[0];
+
+    // Obtiene las páginas desde Facebook
+    const fbRes = await axios.get('https://graph.facebook.com/v23.0/me/accounts', {
+      params: { access_token }
+    });
+    const pages = fbRes.data.data || [];
+
+    // Inserta/actualiza cada página en la base de datos
+    for (const page of pages) {
+      await db.promise().query(`
+        INSERT INTO facebook_pages
+          (id, user_id, facebook_id, name, category, page_access_token, perms, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+          name = VALUES(name),
+          category = VALUES(category),
+          page_access_token = VALUES(page_access_token),
+          perms = VALUES(perms),
+          updated_at = NOW()
+      `, [
+        page.id,
+        user_id,
+        facebook_id,
+        page.name,
+        page.category || null,
+        page.access_token,
+        JSON.stringify(page.tasks || [])
+      ]);
+    }
+
+    res.json({ ok: true, message: 'Páginas sincronizadas', count: pages.length, pages });
+  } catch (error) {
+    console.error('❌ Error sincronizando páginas:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Error al sincronizar páginas', details: error.response?.data || error.message });
+  }
+});
+
 app.get('/api/facebook/pages', async (req, res) => {
   try {
     const facebookId = req.query.facebook_id;
@@ -1969,6 +2018,55 @@ app.get('/api/facebook/pages', async (req, res) => {
 
 
 // GET /api/facebook/businesses/:userId - Endpoint para obtener los Bussiness portfolios de un usuario
+
+app.post('/api/facebook/businesses/sync', async (req, res) => {
+  try {
+    const { facebook_id } = req.body;
+    if (!facebook_id) return res.status(400).json({ error: 'Falta facebook_id' });
+
+    // Busca el access_token y user_id del usuario
+    const [userRows] = await db.promise().query(
+      'SELECT id AS user_id, access_token FROM users WHERE facebook_id = ? LIMIT 1',
+      [facebook_id]
+    );
+    if (!userRows.length) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    const { user_id, access_token } = userRows[0];
+
+    // Obtiene los negocios desde Facebook
+    const fbRes = await axios.get('https://graph.facebook.com/v23.0/me/businesses', {
+      params: { access_token }
+    });
+    const businesses = fbRes.data.data || [];
+
+    // Inserta/actualiza cada negocio en la base de datos
+    for (const biz of businesses) {
+      await db.promise().query(`
+        INSERT INTO facebook_businesses
+          (id, user_id, facebook_id, name, vertical, updated_at)
+        VALUES (?, ?, ?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+          name = VALUES(name),
+          vertical = VALUES(vertical),
+          updated_at = NOW()
+      `, [
+        biz.id,
+        user_id,
+        facebook_id,
+        biz.name,
+        biz.vertical || null
+      ]);
+    }
+
+    res.json({ ok: true, message: 'Negocios sincronizados', count: businesses.length, businesses });
+  } catch (error) {
+    console.error('❌ Error sincronizando negocios:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Error al sincronizar negocios', details: error.response?.data || error.message });
+  }
+});
+
+
 app.get('/api/facebook/businesses', async (req, res) => {
   try {
     const facebookId = req.query.facebook_id;
