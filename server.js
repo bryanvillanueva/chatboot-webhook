@@ -1815,8 +1815,12 @@ app.get('/auth/facebook/callback', async (req, res) => {
 
     // Verificar que el estado sea válido
     if (!stateData || !stateData.timestamp || Date.now() - stateData.timestamp > 3600000) {
-      // Usar la URL correcta según el entorno
-      const redirectUrl = process.env.NODE_ENV === 'development' 
+      // Mejorar la detección del entorno
+      const isDevelopment = process.env.NODE_ENV === 'development' || 
+                           process.env.ENVIRONMENT === 'development' ||
+                           process.env.RAILWAY_ENVIRONMENT === 'development';
+      
+      const redirectUrl = isDevelopment 
         ? 'http://localhost:3000/login?error=invalid_state'
         : 'https://crm.sharkagency.co/login?error=invalid_state';
       return res.redirect(redirectUrl);
@@ -1868,7 +1872,11 @@ app.get('/auth/facebook/callback', async (req, res) => {
     );
 
     // Determinar la URL de redirección según el entorno
-    const frontendUrl = process.env.NODE_ENV === 'development' 
+    const isDevelopment = process.env.NODE_ENV === 'development' || 
+                         process.env.ENVIRONMENT === 'development' ||
+                         process.env.RAILWAY_ENVIRONMENT === 'development';
+    
+    const frontendUrl = isDevelopment 
       ? 'http://localhost:3000/login'
       : 'https://crm.sharkagency.co/login';
 
@@ -1881,6 +1889,7 @@ app.get('/auth/facebook/callback', async (req, res) => {
     redirectUrl.searchParams.set('company_id', company_id || '');
 
     console.log('🔄 Redirigiendo a:', redirectUrl.toString());
+    console.log('🔍 Entorno detectado:', isDevelopment ? 'development' : 'production');
     return res.redirect(redirectUrl.toString());
   } catch (error) {
     console.error(error.response?.data || error.message);
