@@ -2250,6 +2250,177 @@ app.get('/api/facebook/whatsapp-account-detail', async (req, res) => {
 });
 
 
+// FIN DE LOGIN CON FACEBOOK // 
+
+// ENDPOINTS DE CRM INICIAN ACA // 
+
+// CONTACTOS // 
+
+app.post('/api/contacts', async (req, res) => {
+  try {
+    const { user_id, name, phone, email, city, country, tags, notes } = req.body;
+    const [result] = await db.execute(
+      'INSERT INTO contacts (user_id, name, phone, email, city, country, tag_ids, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+      [user_id, name, phone, email, city, country, JSON.stringify(tags || []), notes]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/contacts', async (req, res) => {
+  const { user_id, page = 1, limit = 20 } = req.query;
+  const offset = (page - 1) * limit;
+  try {
+    const [rows] = await db.execute(
+      'SELECT * FROM contacts WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [user_id, Number(limit), Number(offset)]
+    );
+    res.json({ success: true, contacts: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/contacts/:id', async (req, res) => {
+  try {
+    const [rows] = await db.execute('SELECT * FROM contacts WHERE id = ?', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'No encontrado' });
+    res.json({ success: true, contact: rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+app.put('/api/contacts/:id', async (req, res) => {
+  try {
+    const { name, phone, email, city, country, tags, notes } = req.body;
+    await db.execute(
+      'UPDATE contacts SET name=?, phone=?, email=?, city=?, country=?, tag_ids=?, notes=?, updated_at=NOW() WHERE id=?',
+      [name, phone, email, city, country, JSON.stringify(tags || []), notes, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/contacts/:id', async (req, res) => {
+  try {
+    await db.execute('DELETE FROM contacts WHERE id=?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// FIN DE CONTACTOS // 
+
+// ETIQUETAS //
+
+app.post('/api/tags', async (req, res) => {
+  try {
+    const { user_id, name, color } = req.body;
+    const [result] = await db.execute(
+      'INSERT INTO tags (user_id, name, color, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
+      [user_id, name, color]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/tags', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    const [rows] = await db.execute('SELECT * FROM tags WHERE user_id = ?', [user_id]);
+    res.json({ success: true, tags: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/tags/:id', async (req, res) => {
+  try {
+    const { name, color } = req.body;
+    await db.execute(
+      'UPDATE tags SET name=?, color=?, updated_at=NOW() WHERE id=?',
+      [name, color, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/tags/:id', async (req, res) => {
+  try {
+    await db.execute('DELETE FROM tags WHERE id=?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// FIN DE ETIQUETAS // 
+
+// NOTAS // 
+
+app.post('/api/notes', async (req, res) => {
+  try {
+    const { user_id, related_type, related_id, content } = req.body;
+    const [result] = await db.execute(
+      'INSERT INTO notes (user_id, related_type, related_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())',
+      [user_id, related_type, related_id, content]
+    );
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/notes', async (req, res) => {
+  try {
+    const { related_type, related_id } = req.query;
+    const [rows] = await db.execute(
+      'SELECT * FROM notes WHERE related_type=? AND related_id=? ORDER BY created_at DESC',
+      [related_type, related_id]
+    );
+    res.json({ success: true, notes: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/notes/:id', async (req, res) => {
+  try {
+    const { content } = req.body;
+    await db.execute(
+      'UPDATE notes SET content=?, updated_at=NOW() WHERE id=?',
+      [content, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/notes/:id', async (req, res) => {
+  try {
+    await db.execute('DELETE FROM notes WHERE id=?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// FIN DE NOTAS 
+
+// FIN DE CRM //
+
 // Manejo de SIGTERM para evitar cierre abrupto en Railway
 process.on("SIGTERM", () => {
     console.log("🔻 Señal SIGTERM recibida. Cerrando servidor...");
