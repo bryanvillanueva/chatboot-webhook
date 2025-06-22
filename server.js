@@ -1815,7 +1815,11 @@ app.get('/auth/facebook/callback', async (req, res) => {
 
     // Verificar que el estado sea válido
     if (!stateData || !stateData.timestamp || Date.now() - stateData.timestamp > 3600000) {
-      return res.redirect('https://crm.sharkagency.co/login?error=invalid_state');
+      // Usar la URL correcta según el entorno
+      const redirectUrl = process.env.NODE_ENV === 'development' 
+        ? 'http://localhost:3000/login?error=invalid_state'
+        : 'https://crm.sharkagency.co/login?error=invalid_state';
+      return res.redirect(redirectUrl);
     }
 
     // Intercambiar el código por un token de acceso
@@ -1863,14 +1867,20 @@ app.get('/auth/facebook/callback', async (req, res) => {
       }
     );
 
+    // Determinar la URL de redirección según el entorno
+    const frontendUrl = process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:3000/login'
+      : 'https://crm.sharkagency.co/login';
+
     // Redirigir al frontend con los datos completos
-    const redirectUrl = new URL('https://crm.sharkagency.co/login');
+    const redirectUrl = new URL(frontendUrl);
     redirectUrl.searchParams.set('fb_token', access_token);
     redirectUrl.searchParams.set('fb_id', facebookProfile.id);
     redirectUrl.searchParams.set('name', facebookProfile.name);
     redirectUrl.searchParams.set('email', facebookProfile.email || '');
     redirectUrl.searchParams.set('company_id', company_id || '');
 
+    console.log('🔄 Redirigiendo a:', redirectUrl.toString());
     return res.redirect(redirectUrl.toString());
   } catch (error) {
     console.error(error.response?.data || error.message);
