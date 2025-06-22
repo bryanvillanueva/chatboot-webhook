@@ -24,10 +24,9 @@ const db = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
   charset: 'utf8mb4',
-  // Configuraciones adicionales para estabilidad
+  // Configuraciones válidas para mysql2
   acquireTimeout: 60000,
   timeout: 60000,
-  reconnect: true,
   idleTimeout: 300000,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0
