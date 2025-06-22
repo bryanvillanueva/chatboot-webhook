@@ -2318,13 +2318,15 @@ app.get('/api/facebook/whatsapp-account-detail', async (req, res) => {
 
 app.post('/api/contacts', async (req, res) => {
   try {
-    const { user_id, name, phone, email, city, country, notes } = req.body;
-    console.log('Body recibido en /api/contacts:', req.body);
+    // Toma solo los campos que existen
+    const { company_id = null, user_id = null, name, email, phone, source = null, external_id = null, city = null, country = null, address = null, birthday = null } = req.body;
+
+    // Solo los campos válidos para la tabla
     const [result] = await db.promise().execute(
-      'INSERT INTO contacts (user_id, name, phone, email, city, country, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+      `INSERT INTO contacts (company_id, user_id, name, email, phone, source, external_id, city, country, address, birthday, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
-        safe(user_id), safe(name), safe(phone), safe(email),
-        safe(city), safe(country), safe(notes)
+        company_id, user_id, name, email, phone, source, external_id, city, country, address, birthday
       ]
     );
     res.json({ success: true, id: result.insertId });
@@ -2332,6 +2334,7 @@ app.post('/api/contacts', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 app.get('/api/contacts', async (req, res) => {
