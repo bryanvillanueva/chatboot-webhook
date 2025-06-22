@@ -1895,7 +1895,9 @@ app.get('/auth/facebook/start', (req, res) => {
 
   // Obtener la URL del frontend desde el query parameter
   const frontendUrl = req.query.frontend_url || 'https://crm.sharkagency.co';
-  console.log('🔍 Frontend URL recibida:', frontendUrl);
+  console.log('�� Frontend URL recibida:', frontendUrl);
+  console.log('🔍 Query parameters:', req.query);
+  console.log('🔍 frontend_url parameter:', req.query.frontend_url);
 
   // Construir URL de autorización de Facebook
   const state = encodeURIComponent(JSON.stringify({
@@ -1903,6 +1905,12 @@ app.get('/auth/facebook/start', (req, res) => {
     source: 'crm_login',
     frontend_url: frontendUrl // Incluir la URL del frontend en el estado
   }));
+
+  console.log('🔍 State data:', {
+    timestamp: Date.now(),
+    source: 'crm_login',
+    frontend_url: frontendUrl
+  });
 
   const scopes = [
     'instagram_manage_events',
@@ -1955,6 +1963,7 @@ app.get('/auth/facebook/start', (req, res) => {
     `&response_type=code`;
 
   console.log('✅ Redirigiendo a Facebook para autorización...');
+  console.log('🔍 Facebook Auth URL:', facebookAuthUrl);
   
   // Redirigir directamente a Facebook
   res.redirect(facebookAuthUrl);
