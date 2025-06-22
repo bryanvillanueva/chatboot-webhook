@@ -2318,12 +2318,13 @@ app.get('/api/facebook/whatsapp-account-detail', async (req, res) => {
 
 app.post('/api/contacts', async (req, res) => {
   try {
-    const { user_id, name, phone, email, city, country, tags, notes } = req.body;
+    const { user_id, name, phone, email, city, country, notes } = req.body;
+    console.log('Body recibido en /api/contacts:', req.body);
     const [result] = await db.promise().execute(
-      'INSERT INTO contacts (user_id, name, phone, email, city, country, tag_ids, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+      'INSERT INTO contacts (user_id, name, phone, email, city, country, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
       [
         safe(user_id), safe(name), safe(phone), safe(email),
-        safe(city), safe(country), JSON.stringify(tags || []), safe(notes)
+        safe(city), safe(country), safe(notes)
       ]
     );
     res.json({ success: true, id: result.insertId });
@@ -2331,6 +2332,7 @@ app.post('/api/contacts', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 app.get('/api/contacts', async (req, res) => {
   const { user_id, page = 1, limit = 20 } = req.query;
