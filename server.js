@@ -23,13 +23,7 @@ const db = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  charset: 'utf8mb4',
-  // Configuraciones válidas para mysql2
-  acquireTimeout: 60000,
-  timeout: 60000,
-  idleTimeout: 300000,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0
+  charset: 'utf8mb4'
 });
 
 // Agregar manejadores de eventos para el pool
