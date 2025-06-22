@@ -23,19 +23,82 @@ const db = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  charset: 'utf8mb4'
+  charset: 'utf8mb4',
+  // Configuraciones adicionales para estabilidad
+  acquireTimeout: 60000,
+  timeout: 60000,
+  reconnect: true,
+  idleTimeout: 300000,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0
 });
 
+// Agregar manejadores de eventos para el pool
+db.on('connection', function (connection) {
+  console.log('✅ Nueva conexión establecida como id ' + connection.threadId);
+});
 
-// Verifica la conexión a la base de datos
+db.on('error', function(err) {
+  console.error('❌ Error en el pool de base de datos:', err.code);
+  if(err.code === 'PROTOCOL_CONNECTION_LOST') {
+    console.log('🔄 Conexión perdida, intentando reconectar...');
+  } else {
+    console.error('❌ Error de base de datos:', err);
+  }
+});
+
+db.on('acquire', function (connection) {
+  console.log('🔗 Conexión %d adquirida', connection.threadId);
+});
+
+db.on('release', function (connection) {
+  console.log('🔓 Conexión %d liberada', connection.threadId);
+});
+
+db.on('enqueue', function () {
+  console.log('⏳ Esperando conexión disponible...');
+});
+
+// Verifica la conexión a la base de datos con manejo de errores mejorado
 db.getConnection((err, connection) => {
-    if (err) {
-        console.error('❌ Error al conectar a la base de datos:', err.message);
-    } else {
-        console.log('✅ Conectado a la base de datos MySQL');
-        connection.release(); // Liberar la conexión
-    }
+  if (err) {
+      console.error('❌ Error al conectar a la base de datos:', err.message);
+      console.error('🔍 Código de error:', err.code);
+      console.error('🔍 Estado SQL:', err.sqlState);
+      
+      // Intentar reconexión después de un tiempo
+      setTimeout(() => {
+          console.log('🔄 Intentando reconectar...');
+          db.getConnection((retryErr, retryConnection) => {
+              if (retryErr) {
+                  console.error('❌ Fallo en reconexión:', retryErr.message);
+              } else {
+                  console.log('✅ Reconexión exitosa');
+                  retryConnection.release();
+              }
+          });
+      }, 5000);
+  } else {
+      console.log('✅ Conectado a la base de datos MySQL');
+      connection.release(); // Liberar la conexión
+  }
 });
+
+// Función helper para ejecutar queries con mejor manejo de errores
+function executeQuery(query, params = []) {
+  return new Promise((resolve, reject) => {
+      db.query(query, params, (error, results) => {
+          if (error) {
+              console.error('❌ Error en query:', error.message);
+              console.error('🔍 Query:', query);
+              reject(error);
+          } else {
+              resolve(results);
+          }
+      });
+  });
+}
+
 
 // Configuracion de Moodle 
 const MOODLE_API_URL = process.env.MOODLE_API_URL;
@@ -2259,7 +2322,7 @@ app.get('/api/facebook/whatsapp-account-detail', async (req, res) => {
 app.post('/api/contacts', async (req, res) => {
   try {
     const { user_id, name, phone, email, city, country, tags, notes } = req.body;
-    const [result] = await db.execute(
+    const [result] = await db.promise().execute(
       'INSERT INTO contacts (user_id, name, phone, email, city, country, tag_ids, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
       [user_id, name, phone, email, city, country, JSON.stringify(tags || []), notes]
     );
@@ -2273,7 +2336,7 @@ app.get('/api/contacts', async (req, res) => {
   const { user_id, page = 1, limit = 20 } = req.query;
   const offset = (page - 1) * limit;
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.promise().execute(
       'SELECT * FROM contacts WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
       [user_id, Number(limit), Number(offset)]
     );
@@ -2285,7 +2348,7 @@ app.get('/api/contacts', async (req, res) => {
 
 app.get('/api/contacts/:id', async (req, res) => {
   try {
-    const [rows] = await db.execute('SELECT * FROM contacts WHERE id = ?', [req.params.id]);
+    const [rows] = await db.promise().execute('SELECT * FROM contacts WHERE id = ?', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ success: false, error: 'No encontrado' });
     res.json({ success: true, contact: rows[0] });
   } catch (err) {
@@ -2297,7 +2360,7 @@ app.get('/api/contacts/:id', async (req, res) => {
 app.put('/api/contacts/:id', async (req, res) => {
   try {
     const { name, phone, email, city, country, tags, notes } = req.body;
-    await db.execute(
+    await db.promise().execute(
       'UPDATE contacts SET name=?, phone=?, email=?, city=?, country=?, tag_ids=?, notes=?, updated_at=NOW() WHERE id=?',
       [name, phone, email, city, country, JSON.stringify(tags || []), notes, req.params.id]
     );
@@ -2309,7 +2372,7 @@ app.put('/api/contacts/:id', async (req, res) => {
 
 app.delete('/api/contacts/:id', async (req, res) => {
   try {
-    await db.execute('DELETE FROM contacts WHERE id=?', [req.params.id]);
+    await db.promise().execute('DELETE FROM contacts WHERE id=?', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -2323,7 +2386,7 @@ app.delete('/api/contacts/:id', async (req, res) => {
 app.post('/api/tags', async (req, res) => {
   try {
     const { user_id, name, color } = req.body;
-    const [result] = await db.execute(
+    const [result] = await db.promise().execute(
       'INSERT INTO tags (user_id, name, color, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
       [user_id, name, color]
     );
@@ -2336,7 +2399,7 @@ app.post('/api/tags', async (req, res) => {
 app.get('/api/tags', async (req, res) => {
   try {
     const { user_id } = req.query;
-    const [rows] = await db.execute('SELECT * FROM tags WHERE user_id = ?', [user_id]);
+    const [rows] = await db.promise().execute('SELECT * FROM tags WHERE user_id = ?', [user_id]);
     res.json({ success: true, tags: rows });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -2346,7 +2409,7 @@ app.get('/api/tags', async (req, res) => {
 app.put('/api/tags/:id', async (req, res) => {
   try {
     const { name, color } = req.body;
-    await db.execute(
+    await db.promise().execute(
       'UPDATE tags SET name=?, color=?, updated_at=NOW() WHERE id=?',
       [name, color, req.params.id]
     );
@@ -2358,7 +2421,7 @@ app.put('/api/tags/:id', async (req, res) => {
 
 app.delete('/api/tags/:id', async (req, res) => {
   try {
-    await db.execute('DELETE FROM tags WHERE id=?', [req.params.id]);
+    await db.promise().execute('DELETE FROM tags WHERE id=?', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -2372,7 +2435,7 @@ app.delete('/api/tags/:id', async (req, res) => {
 app.post('/api/notes', async (req, res) => {
   try {
     const { user_id, related_type, related_id, content } = req.body;
-    const [result] = await db.execute(
+    const [result] = await db.promise().execute(
       'INSERT INTO notes (user_id, related_type, related_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())',
       [user_id, related_type, related_id, content]
     );
@@ -2385,7 +2448,7 @@ app.post('/api/notes', async (req, res) => {
 app.get('/api/notes', async (req, res) => {
   try {
     const { related_type, related_id } = req.query;
-    const [rows] = await db.execute(
+    const [rows] = await db.promise().execute(
       'SELECT * FROM notes WHERE related_type=? AND related_id=? ORDER BY created_at DESC',
       [related_type, related_id]
     );
@@ -2398,7 +2461,7 @@ app.get('/api/notes', async (req, res) => {
 app.put('/api/notes/:id', async (req, res) => {
   try {
     const { content } = req.body;
-    await db.execute(
+    await db.promise().execute(
       'UPDATE notes SET content=?, updated_at=NOW() WHERE id=?',
       [content, req.params.id]
     );
@@ -2410,7 +2473,7 @@ app.put('/api/notes/:id', async (req, res) => {
 
 app.delete('/api/notes/:id', async (req, res) => {
   try {
-    await db.execute('DELETE FROM notes WHERE id=?', [req.params.id]);
+    await db.promise().execute('DELETE FROM notes WHERE id=?', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -2421,15 +2484,43 @@ app.delete('/api/notes/:id', async (req, res) => {
 
 // FIN DE CRM //
 
+// Manejo de errores no capturados
+process.on('uncaughtException', (err) => {
+    console.error('❌ Excepción no capturada:', err);
+    console.error('Stack:', err.stack);
+    // No cerrar el proceso inmediatamente, pero prepararse para ello
+    setTimeout(() => {
+        process.exit(1);
+    }, 1000);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Promesa rechazada no manejada en:', promise);
+    console.error('Razón:', reason);
+});
+
+// Middleware de manejo de errores para Express
+app.use((err, req, res, next) => {
+    console.error('❌ Error en middleware:', err.stack);
+    res.status(500).json({ 
+        error: 'Error interno del servidor',
+        message: process.env.NODE_ENV === 'development' ? err.message : 'Algo salió mal'
+    });
+});
+
 // Manejo de SIGTERM para evitar cierre abrupto en Railway
 process.on("SIGTERM", () => {
     console.log("🔻 Señal SIGTERM recibida. Cerrando servidor...");
-    server.close(() => {
-        console.log("✅ Servidor cerrado correctamente.");
+    if (server) {
+        server.close(() => {
+            console.log("✅ Servidor cerrado correctamente.");
+            process.exit(0);
+        });
+    } else {
         process.exit(0);
-    });
+    }
 });
 
 // Iniciar el servidor
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Servidor corriendo en el puerto ${PORT}`));
+const server = app.listen(PORT, () => console.log(`🚀 Servidor corriendo en el puerto ${PORT}`));
