@@ -1815,15 +1815,8 @@ app.get('/auth/facebook/callback', async (req, res) => {
 
     // Verificar que el estado sea válido
     if (!stateData || !stateData.timestamp || Date.now() - stateData.timestamp > 3600000) {
-      // Mejorar la detección del entorno
-      const isDevelopment = process.env.NODE_ENV === 'development' || 
-                           process.env.ENVIRONMENT === 'development' ||
-                           process.env.RAILWAY_ENVIRONMENT === 'development';
-      
-      const redirectUrl = isDevelopment 
-        ? 'http://localhost:3000/login?error=invalid_state'
-        : 'https://crm.sharkagency.co/login?error=invalid_state';
-      return res.redirect(redirectUrl);
+      const frontendUrl = stateData?.frontend_url || 'https://crm.sharkagency.co';
+      return res.redirect(`${frontendUrl}/login?error=invalid_state`);
     }
 
     // Intercambiar el código por un token de acceso
@@ -1871,17 +1864,11 @@ app.get('/auth/facebook/callback', async (req, res) => {
       }
     );
 
-    // Determinar la URL de redirección según el entorno
-    const isDevelopment = process.env.NODE_ENV === 'development' || 
-                         process.env.ENVIRONMENT === 'development' ||
-                         process.env.RAILWAY_ENVIRONMENT === 'development';
-    
-    const frontendUrl = isDevelopment 
-      ? 'http://localhost:3000/login'
-      : 'https://crm.sharkagency.co/login';
+    // Usar la URL del frontend del estado
+    const frontendUrl = stateData.frontend_url || 'https://crm.sharkagency.co';
 
     // Redirigir al frontend con los datos completos
-    const redirectUrl = new URL(frontendUrl);
+    const redirectUrl = new URL(frontendUrl + '/login');
     redirectUrl.searchParams.set('fb_token', access_token);
     redirectUrl.searchParams.set('fb_id', facebookProfile.id);
     redirectUrl.searchParams.set('name', facebookProfile.name);
@@ -1889,7 +1876,7 @@ app.get('/auth/facebook/callback', async (req, res) => {
     redirectUrl.searchParams.set('company_id', company_id || '');
 
     console.log('🔄 Redirigiendo a:', redirectUrl.toString());
-    console.log('🔍 Entorno detectado:', isDevelopment ? 'development' : 'production');
+    console.log('🔍 Frontend URL usada:', frontendUrl);
     return res.redirect(redirectUrl.toString());
   } catch (error) {
     console.error(error.response?.data || error.message);
@@ -1906,10 +1893,15 @@ app.get('/auth/facebook/start', (req, res) => {
     return res.redirect('https://crm.sharkagency.co/login?error=facebook_not_configured');
   }
 
+  // Obtener la URL del frontend desde el query parameter
+  const frontendUrl = req.query.frontend_url || 'https://crm.sharkagency.co';
+  console.log('🔍 Frontend URL recibida:', frontendUrl);
+
   // Construir URL de autorización de Facebook
   const state = encodeURIComponent(JSON.stringify({
     timestamp: Date.now(),
-    source: 'crm_login'
+    source: 'crm_login',
+    frontend_url: frontendUrl // Incluir la URL del frontend en el estado
   }));
 
   const scopes = [
