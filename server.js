@@ -2338,22 +2338,34 @@ app.post('/api/contacts', async (req, res) => {
 
 
 app.get('/api/contacts', async (req, res) => {
-  const { user_id, page = 1, limit = 20 } = req.query;
+  const { user_id = null, page = 1, limit = 20 } = req.query;
   const offset = (page - 1) * limit;
+
   try {
-    const [rows] = await db.promise().execute(
-      'SELECT * FROM contacts WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
-      [safe(user_id), Number(limit), Number(offset)]
-    );
+    let sql = 'SELECT * FROM contacts';
+    let params = [];
+
+    if (user_id) {
+      sql += ' WHERE user_id = ?';
+      params.push(user_id);
+    }
+
+    sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(Number(limit), Number(offset));
+
+    const [rows] = await db.promise().execute(sql, params);
     res.json({ success: true, contacts: rows });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
+
 app.get('/api/contacts/:id', async (req, res) => {
   try {
-    const [rows] = await db.promise().execute('SELECT * FROM contacts WHERE id = ?', [safe(req.params.id)]);
+    const [rows] = await db.promise().execute(
+      'SELECT * FROM contacts WHERE id = ?', [req.params.id]
+    );
     if (rows.length === 0) return res.status(404).json({ success: false, error: 'No encontrado' });
     res.json({ success: true, contact: rows[0] });
   } catch (err) {
@@ -2362,14 +2374,32 @@ app.get('/api/contacts/:id', async (req, res) => {
 });
 
 
+
 app.put('/api/contacts/:id', async (req, res) => {
   try {
-    const { name, phone, email, city, country, tags, notes } = req.body;
+    // Solo los campos existentes
+    const {
+      company_id = null,
+      user_id = null,
+      name = null,
+      email = null,
+      phone = null,
+      source = null,
+      external_id = null,
+      city = null,
+      country = null,
+      address = null,
+      birthday = null
+    } = req.body;
+
+    // Solo actualiza lo que existe en la tabla
     await db.promise().execute(
-      'UPDATE contacts SET name=?, phone=?, email=?, city=?, country=?, tag_ids=?, notes=?, updated_at=NOW() WHERE id=?',
+      `UPDATE contacts SET
+        company_id=?, user_id=?, name=?, email=?, phone=?, source=?, external_id=?, city=?, country=?, address=?, birthday=?, updated_at=NOW()
+       WHERE id=?`,
       [
-        safe(name), safe(phone), safe(email), safe(city), 
-        safe(country), JSON.stringify(tags || []), safe(notes), safe(req.params.id)
+        company_id, user_id, name, email, phone, source,
+        external_id, city, country, address, birthday, req.params.id
       ]
     );
     res.json({ success: true });
@@ -2380,12 +2410,13 @@ app.put('/api/contacts/:id', async (req, res) => {
 
 app.delete('/api/contacts/:id', async (req, res) => {
   try {
-    await db.promise().execute('DELETE FROM contacts WHERE id=?', [safe(req.params.id)]);
+    await db.promise().execute('DELETE FROM contacts WHERE id=?', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 // FIN DE CONTACTOS // 
 
